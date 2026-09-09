@@ -1,0 +1,10 @@
+# Build/preview artefacts from gen_assets.py
+_preview_*.png
+
+# OS / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+
+node_modules/

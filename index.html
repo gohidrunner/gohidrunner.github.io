@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b3320">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Run From Gohid</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- ===================================================================== HUD
+     Every node here is written in place by hud.js; nothing is rebuilt per
+     frame. The two counts are one flex row inside a full-width column with
+     the score, so they reflow instead of overlapping on a narrow screen.
+     ====================================================================== -->
+<div id="hud" style="display:none">
+
+  <div class="hud-top">
+    <div class="hud-row">
+
+      <div class="hud-counts">
+        <div class="count aydin" id="hud-aydin-box">
+          <div class="count-label">AYDINS</div>
+          <div class="count-value" id="hud-aydins">0</div>
+        </div>
+        <div class="count gohid" id="hud-gohid-box">
+          <div class="count-label">GOHIDS</div>
+          <div class="count-value" id="hud-gohids">0</div>
+        </div>
+      </div>
+
+      <div class="hud-centre">
+        <div class="score" id="hud-score">0</div>
+        <div class="timer" id="hud-time">0:00</div>
+      </div>
+
+      <div class="hud-right">
+        <div class="fps" id="hud-fps"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="rally-pill" id="hud-rally">
+      <span class="rally-dot"></span><span class="rally-text">RALLY</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ================================================================ screens -->
+
+<div class="screen" id="screen-title" style="display:none">
+  <div class="panel">
+    <h1>RUN FROM<br><span class="accent">GOHID</span></h1>
+    <p class="tag">Every aydin you keep alive scores.<br>
+       Every one you lose hunts you.</p>
+    <button class="btn" id="btn-play">PLAY</button>
+    <div class="hint">
+      <span class="key-hint"><b>WASD</b> / arrows to move &nbsp;&middot;&nbsp;
+        <b>hold SPACE</b> to rally</span>
+      <span class="touch-hint">Drag anywhere to move &middot; hold bottom-right to rally</span>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-dead" style="display:none">
+  <div class="panel">
+    <h2 class="dead-title">THE HERD IS GONE</h2>
+    <div class="res-score" id="res-score">0</div>
+    <div class="res-new" id="res-new" style="display:none">NEW BEST</div>
+    <div class="res-grid">
+      <div class="res-k">Peak herd</div>      <div class="res-v" id="res-peak">0</div>
+      <div class="res-k">Aydins lost</div>    <div class="res-v" id="res-lost">0</div>
+      <div class="res-k">Gohids created</div> <div class="res-v" id="res-created">0</div>
+      <div class="res-k">Time survived</div>  <div class="res-v" id="res-time">0:00</div>
+      <div class="res-k">Personal best</div>  <div class="res-v" id="res-best">0</div>
+    </div>
+    <button class="btn" id="btn-again">PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- =================================================================== load
+     Order is load-bearing:
+       config   defines CFG and depends on nothing at all
+       assets   GENERATED base64 sprites, so file:// does not taint the canvas
+       utils    maths helpers, reads CFG
+       spatial  neighbour grid, uses utils
+       sprites  needs CFG paths and utils (hexToRgb) for tinting
+       audio    reads CFG numbers when synthesising events
+       particles allocates its pool from CFG.fx
+       input    reads CFG.input, calls into audio on first gesture
+       entities defines Commander/Aydin/Gohid, uses all of the above
+       game     owns world state, constructs entities and grids
+       render   reads game state and sprites, uses instanceof on entities
+       hud      binds DOM nodes, reads game state
+       main     boots everything; must be last
+     ====================================================================== -->
+<script src="js/config.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/spatial.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/input.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Keep LF in the repo regardless of platform; the source is written LF.
+* text=auto eol=lf
+*.png binary
+*.woff2 binary

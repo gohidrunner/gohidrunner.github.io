@@ -1,0 +1,251 @@
+/* =============================================================================
+ * style.css  --  canvas, HUD and overlay screens.
+ *
+ * Notes that are easy to undo by accident:
+ *  - No emoji anywhere in the UI, and none in world rendering at all.
+ *  - touch-action:none on the canvas, or a drag scrolls the page instead of
+ *    steering, and every touchmove fights the browser's gesture handling.
+ *  - Screens use plain block centring with overflow-y:auto, NOT flex centring.
+ *    A flex-centred panel taller than the viewport clips its own top off with
+ *    no way to scroll to it, which is exactly what happens on a phone in
+ *    landscape.
+ * ========================================================================== */
+
+:root {
+  --ink:        #f4ecd8;
+  --ink-dim:    #b9b39c;
+  --aydin:      #ffd98a;
+  --gohid:      #ff6a5a;
+  --panel:      #232b1c;
+  --panel-line: #46512f;
+  --bg:         #2b3320;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  -webkit-font-smoothing: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+#game {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;         /* see header note */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ------------------------------------------------------------------- HUD */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;       /* the HUD must never eat a steering drag */
+  z-index: 10;
+}
+
+.hud-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: max(10px, env(safe-area-inset-top)) 12px 0 12px;
+}
+
+/* One flex row, so on a narrow screen the counts and the score reflow
+ * instead of stacking on top of each other. */
+.hud-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.hud-counts { display: flex; gap: 14px; flex: 0 1 auto; min-width: 0; }
+
+.count { line-height: 1; }
+.count-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--ink-dim);
+  margin-bottom: 2px;
+}
+.count-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.45);
+}
+.count.aydin .count-value { color: var(--aydin); }
+.count.aydin .count-label { color: #c9ab68; }
+.count.gohid .count-value { color: var(--gohid); }
+.count.gohid .count-label { color: #b8574c; }
+
+/* Gains and losses must not read the same at the edge of vision. */
+@keyframes pulseUp {
+  0%   { transform: scale(1);    filter: brightness(1); }
+  35%  { transform: scale(1.22); filter: brightness(1.8); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+@keyframes pulseDown {
+  0%   { transform: translateX(0)    scale(1); }
+  20%  { transform: translateX(-5px) scale(1.14); }
+  45%  { transform: translateX(5px)  scale(1.14); }
+  70%  { transform: translateX(-3px) scale(1.06); }
+  100% { transform: translateX(0)    scale(1); }
+}
+.pulse-up   { animation: pulseUp   0.28s steps(4, end); }
+.pulse-down { animation: pulseDown 0.34s steps(6, end); }
+
+.hud-centre { text-align: center; flex: 1 1 auto; min-width: 0; }
+.score {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.45);
+}
+.timer { font-size: 12px; color: var(--ink-dim); letter-spacing: 2px; }
+
+.hud-right { flex: 0 0 auto; text-align: right; }
+.fps { font-size: 10px; color: #7d8a63; }
+
+.hud-bottom {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+}
+
+.rally-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: 2px solid #4a5533;
+  background: rgba(20,26,14,0.5);
+  color: #8d9a70;
+  font-size: 11px;
+  letter-spacing: 3px;
+  transition: none;
+}
+.rally-pill .rally-dot {
+  width: 8px; height: 8px;
+  background: #4a5533;
+}
+.rally-pill.on {
+  border-color: var(--aydin);
+  color: #ffeec0;
+  background: rgba(70,58,20,0.55);
+}
+.rally-pill.on .rally-dot { background: var(--aydin); }
+
+/* --------------------------------------------------------------- screens */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow-y: auto;            /* see header note -- not flex centring */
+  -webkit-overflow-scrolling: touch;
+  background: rgba(18,22,14,0.82);
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.panel {
+  display: inline-block;
+  text-align: center;
+  max-width: 460px;
+  width: 100%;
+  margin: 6vh auto 24px auto;
+  padding: 26px 22px;
+  background: var(--panel);
+  border: 3px solid var(--panel-line);
+  box-shadow: 0 8px 0 rgba(0,0,0,0.35);
+}
+
+h1 {
+  margin: 0 0 10px 0;
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: 2px;
+}
+h1 .accent { color: var(--gohid); }
+
+.tag { color: var(--ink-dim); font-size: 13px; line-height: 1.7; margin: 0 0 20px 0; }
+
+.btn {
+  display: block;
+  width: 100%;
+  margin: 14px 0 0 0;
+  padding: 15px 18px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #20260f;
+  background: var(--aydin);
+  border: none;
+  border-bottom: 5px solid #b3924f;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.btn:active { transform: translateY(3px); border-bottom-width: 2px; }
+
+.hint { margin-top: 16px; font-size: 11px; color: #8d9a70; line-height: 1.9; }
+.hint b { color: var(--ink); }
+.touch-hint { display: none; }
+
+.dead-title { margin: 0 0 6px 0; font-size: 20px; letter-spacing: 3px; color: var(--gohid); }
+.res-score { font-size: 46px; font-weight: 700; color: var(--aydin); }
+.res-new {
+  font-size: 12px; letter-spacing: 4px; color: #9be26a; margin-top: 2px;
+  animation: pulseUp 0.5s steps(4, end) infinite;
+}
+
+.res-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 14px;
+  margin: 20px 0 4px 0;
+  font-size: 13px;
+  text-align: left;
+}
+.res-k { color: var(--ink-dim); }
+.res-v { color: var(--ink); font-weight: 700; }
+
+/* ---------------------------------------------------------------- mobile */
+
+/* Swap the WHOLE hint, not just its <b> tags. Hiding only the bold words left
+ * the punctuation behind, so a phone read "/ arrows to move . to rally". */
+@media (pointer: coarse) {
+  .key-hint { display: none; }
+  .touch-hint { display: inline; }
+}
+
+@media (max-width: 560px) {
+  .count-value { font-size: 30px; }
+  .score { font-size: 20px; }
+  h1 { font-size: 32px; }
+}
+
+@media (max-height: 430px) {
+  .panel { margin-top: 2vh; padding: 16px; }
+  h1 { font-size: 26px; }
+  .tag { margin-bottom: 12px; }
+}
