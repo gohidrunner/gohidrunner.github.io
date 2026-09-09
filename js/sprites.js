@@ -19,7 +19,7 @@
 'use strict';
 
 const Sprites = {
-  base: {},        // name -> canvas, normalised to CFG.assets.pixelSize
+  base: {},        // name -> canvas, one per sprite at its own draw size
   _tintCache: new Map(),
   ready: false,
 
@@ -70,40 +70,56 @@ const Sprites = {
     });
   },
 
-  /* Draw the source into a pixelSize x pixelSize canvas so that photographic
-   * and hand-drawn art end up sharing one pixel grid.
+  /* Base canvas resolution for a sprite: the size it is actually drawn at, so
+   * drawImage never has to resample. See the note on CFG.assets.supersample. */
+  targetSize(name) {
+    const entity = CFG[name];
+    const base = (entity && entity.sprite) ? entity.sprite : 40;
+    return Math.max(8, Math.round(base * (CFG.assets.supersample || 1)));
+  },
+
+  /* Letterbox the source into a square and resample it to the target size.
    *
-   * The downscale runs WITH smoothing on (a proper area average) and the result
-   * is drawn WITH smoothing off later. Nearest-neighbour subsampling a 125px
-   * photo straight down to 32px throws away most of the pixels and turns a face
-   * into noise; averaging first, then hard-scaling on draw, is what actually
-   * produces clean pixel art from a photograph. */
+   * The filter depends on the DIRECTION of the resample, which matters because
+   * the three assets are not alike: two are photographs much larger than the
+   * target, one is pixel art smaller than it.
+   *
+   *   downscale -> smoothing ON (area average). Nearest-neighbour subsampling
+   *                a 125px photo throws away most of its pixels and turns a
+   *                face into noise.
+   *   upscale   -> smoothing OFF (nearest). Averaging when enlarging pixel art
+   *                blurs edges that were authored crisp, which is what made
+   *                the 32px commander look soft at a 48px base.
+   *
+   * Either way the result is drawn 1:1 with smoothing off. */
   _normalise(img, name) {
-    const S = CFG.assets.pixelSize;
+    const S = Sprites.targetSize(name);
     let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
 
-    if (name === 'gohid' && CFG.assets.gohidCrop) {
-      const c = CFG.assets.gohidCrop;
-      sx = sw * c[0];
-      sy = sh * c[1];
-      sw = sw * c[2];
-      sh = sh * c[3];
+    const crop = CFG.assets[name + 'Crop'];
+    if (crop) {
+      sx = sw * crop[0];
+      sy = sh * crop[1];
+      sw = sw * crop[2];
+      sh = sh * crop[3];
     }
 
-    // Letterbox into a square so the sprite is never stretched.
+    // Letterbox into a square so a portrait source is never stretched.
     const side = Math.max(sw, sh);
     const cv = document.createElement('canvas');
     cv.width = S;
     cv.height = S;
     const g = cv.getContext('2d');
-    g.imageSmoothingEnabled = true;
-    g.imageSmoothingQuality = 'high';
+    const shrinking = side > S;
+    g.imageSmoothingEnabled = shrinking;
+    if (shrinking) g.imageSmoothingQuality = 'high';
+
     const dw = (sw / side) * S, dh = (sh / side) * S;
     g.drawImage(img, sx, sy, sw, sh, (S - dw) / 2, (S - dh) / 2, dw, dh);
 
-    // Hard-threshold the alpha. Averaging leaves a halo of partial alpha around
-    // the cutout; on a hard-edged sprite that halo reads as blur, and it makes
-    // the tint blend look muddy right at the silhouette.
+    // Hard-threshold the alpha. Resampling leaves a halo of partial alpha
+    // around a cutout; on a hard-edged sprite that halo reads as blur and
+    // makes the tint blend look muddy right at the silhouette.
     const id = g.getImageData(0, 0, S, S);
     const d = id.data;
     for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 110 ? 255 : 0;
@@ -113,14 +129,21 @@ const Sprites = {
 
   /* --------------------------------------------------------- fallbacks */
 
+  /* Procedural stand-ins, authored on a 32px grid and scaled to the target so
+   * a missing file degrades to a drawn shape instead of crashing. */
   _fallback(name) {
-    const S = CFG.assets.pixelSize;
+    const S = Sprites.targetSize(name);
+    const k = S / 32;
     const cv = document.createElement('canvas');
     cv.width = S;
     cv.height = S;
     const g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    const px = (x, y, w, h, col) => {
+      g.fillStyle = col;
+      g.fillRect(Math.round(x * k), Math.round(y * k),
+                 Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+    };
 
     if (name === 'aydin') {
       px(4, 14, 24, 13, '#e7d9c1');

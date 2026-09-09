@@ -18,14 +18,27 @@ const CFG = {
     aydin:     'assets/aydin.png',
     commander: 'assets/commander.png',
 
-    // gohid.png is a head-and-shoulders photo cutout; at sprite size the
-    // shirt is dead weight, so crop to the face before pixelating.
-    // Fractions of the source image: [x, y, w, h].
-    gohidCrop: [0.10, 0.02, 0.80, 0.72],
+    // CROPPING IS OFF, and should stay off unless there is a real reason.
+    // This was [0.10, 0.02, 0.80, 0.72], read as [x, y, w, h] fractions, which
+    // threw away 10% from each side and the entire bottom 28% of the source --
+    // it beheaded the character. If a crop is ever wanted again it must be
+    // derived from the image's own alpha bounding box, never hardcoded
+    // fractions, and it must never cut into the subject.
+    gohidCrop: null,
 
-    // All sprites are normalised to this square before use, so photo and
-    // hand-drawn art share one pixel grid.
-    pixelSize: 32,
+    // Each sprite's base canvas is built at the size it is actually DRAWN at
+    // (CFG.<entity>.sprite), not at one shared resolution.
+    //
+    // A single global pixelSize forces a second resample at draw time: a 48px
+    // base drawn at 34px is downscaled again with smoothing disabled, which
+    // both throws away the detail the larger base was for AND makes the sprite
+    // shimmer as it moves. Matching the two means drawImage is 1:1 and every
+    // sprite is as sharp as its source allows.
+    //
+    // Variants that draw larger (the Brute) upscale from this base with
+    // nearest-neighbour, which reads as the same creature rendered chunkier --
+    // the correct look here rather than a defect.
+    supersample: 1,
   },
 
   /* ----------------------------------------------------------------- world */
@@ -49,7 +62,7 @@ const CFG = {
   commander: {
     speed:         300,
     radius:        14,
-    sprite:        34,   // draw size in world units
+    sprite:        40,   // draw size in world units AND base canvas resolution
     rallySlow:     0.75, // speed multiplier while rallying (25% slower)
     knockback:     260,  // impulse when a gohid touches the commander
     knockbackDecay: 6,   // per second
@@ -68,7 +81,7 @@ const CFG = {
   aydin: {
     speed:        290,   // slightly under the commander, so the herd strings out
     radius:       10,
-    sprite:       26,
+    sprite:       34,    // also the base canvas resolution -- see assets.supersample
     panicSpeedMul: 1.30,
     panicTime:    1.1,   // seconds a panic lasts after leaving gohid range
     spawnInvuln:  1.5,   // flashes white, cannot be caught
@@ -110,7 +123,9 @@ const CFG = {
   gohid: {
     speed:       250,    // slower than you, faster than a panicking straggler
     radius:      13,
-    sprite:      34,
+    sprite:      44,     // also the base canvas resolution; the gohid is the
+                         // face the player reads under pressure, so it is the
+                         // largest of the three
     grabRadius:  26,
     turnRate:    7,      // steering responsiveness
     spawnTelegraph: 1.5, // expanding ring + rising tone before it exists

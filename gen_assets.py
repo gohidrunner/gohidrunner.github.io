@@ -190,23 +190,76 @@ def preview(img, path, scale=8):
 
 
 def main():
+    """Generate only MISSING art, then always re-embed whatever is on disk.
+
+    The drawn sprites here are fallbacks, not the source of truth. Two of the
+    three assets are now hand-supplied photographs, and an earlier version of
+    this script unconditionally overwrote aydin.png -- running it would have
+    silently destroyed the real artwork. Existing files are therefore never
+    touched without --force.
+    """
+    import sys
+    force = "--force" in sys.argv
     os.makedirs(ASSETS, exist_ok=True)
-    jobs = (("aydin.png", make_aydin()), ("commander.png", make_commander()))
-    for name, img in jobs:
+
+    drawable = {"aydin.png": make_aydin, "commander.png": make_commander}
+    for name, build in drawable.items():
         out = os.path.join(ASSETS, name)
-        img.save(out)
-        print("wrote", out)
-    # contact sheet so the sprites can be eyeballed together at working size
-    sheet = Image.new("RGBA", (S * 3, S), (0, 0, 0, 0))
-    sheet.paste(jobs[0][1], (0, 0))
-    sheet.paste(jobs[1][1], (S, 0))
-    gohid = os.path.join(ASSETS, "gohid.png")
-    if os.path.exists(gohid):
-        g = Image.open(gohid).convert("RGBA").resize((S, S), Image.LANCZOS)
-        sheet.paste(g, (S * 2, 0))
-    sheet.resize((S * 3 * 8, S * 8), Image.NEAREST).save(os.path.join(HERE, "_preview_sheet.png"))
-    print("wrote preview")
+        if os.path.exists(out) and not force:
+            print("keep    ", out, "(already exists -- --force to redraw)")
+            continue
+        build().save(out)
+        print("drew    ", out)
+
+    for name in ("gohid.png", "aydin.png", "commander.png"):
+        out = os.path.join(ASSETS, name)
+        if not os.path.exists(out):
+            print("MISSING ", out, "-- the game will fall back to procedural art")
+
+    contact_sheet()
     embed(["gohid", "aydin", "commander"])
+
+
+def contact_sheet():
+    """All three sprites through the real normalise pipeline, side by side at
+    each candidate pixelSize, so they can be compared before choosing one."""
+    names = ["gohid", "aydin", "commander"]
+    sizes = [32, 48, 64]
+    pad = 8
+    cell = max(sizes)
+    sheet = Image.new("RGBA",
+                      (len(names) * (cell + pad) + pad,
+                       len(sizes) * (cell + pad) + pad),
+                      (24, 20, 32, 255))
+    for row, S in enumerate(sizes):
+        for col, name in enumerate(names):
+            path = os.path.join(ASSETS, name + ".png")
+            if not os.path.exists(path):
+                continue
+            img = normalise(Image.open(path).convert("RGBA"), S)
+            x = pad + col * (cell + pad) + (cell - S) // 2
+            y = pad + row * (cell + pad) + (cell - S) // 2
+            sheet.paste(img, (x, y), img)
+    scale = 5
+    sheet.resize((sheet.width * scale, sheet.height * scale), Image.NEAREST)          .save(os.path.join(HERE, "_preview_sizes.png"))
+    print("wrote    _preview_sizes.png  (rows: 32 / 48 / 64 px)")
+
+
+def normalise(img, S):
+    """Mirror of Sprites._normalise in js/sprites.js: letterbox into a square,
+    area-average down to S, then hard-threshold alpha at 110. Kept in step with
+    that function so the preview shows what the game will actually draw."""
+    sw, sh = img.size
+    side = max(sw, sh)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    canvas.paste(img, ((side - sw) // 2, (side - sh) // 2))
+    out = canvas.resize((S, S), Image.LANCZOS)
+    px = out.load()
+    for y in range(S):
+        for x in range(S):
+            r, g, b, a = px[x, y]
+            px[x, y] = (r, g, b, 255 if a > 110 else 0)
+    return out
 
 
 if __name__ == "__main__":
