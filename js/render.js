@@ -125,6 +125,7 @@ const Render = {
     Render._drawFloor(ctx, v);
     Render._drawTelegraphs(ctx);
     Render._drawRallyRing(ctx);
+    Tools.draw(ctx, v);          // smoke, walls, decoys, escorts
     Particles.draw(ctx, v);
     Render._drawEntities(ctx, v);
 
@@ -285,6 +286,12 @@ const Render = {
     let cv;
     if (g.spawnFlash > 0 && (Math.floor(g.spawnFlash * 16) & 1) === 0) {
       cv = Sprites.silhouette('gohid', CFG.palette.world.invulnFlash);
+    } else if (g.stunT > 0 || g.rootT > 0) {
+      // Disabled gohids go cold. A tool that stops one has to be legible at a
+      // glance or the player cannot tell it worked.
+      cv = Sprites.tinted('gohid', CFG.palette.rally, 0.5);
+    } else if (g.blindT > 0) {
+      cv = Sprites.tinted('gohid', '#8d86a8', 0.55);
     } else {
       // Strong tint: both sprites are dark-haired head-and-shoulders photos
       // and read almost identically at this size without it.
@@ -295,6 +302,13 @@ const Render = {
     if (g.leaving) ctx.globalAlpha = 0.5;
     ctx.drawImage(g.face < 0 ? Render.flipped(cv) : cv, x, y, size, size);
     ctx.globalAlpha = 1;
+
+    if (g.rootT > 0 || g.stunT > 0 || g.slowT > 0) {
+      const mark = (g.stunT > 0) ? CFG.palette.rally
+                 : (g.rootT > 0) ? '#cbbf9a' : '#9fd8ff';
+      ctx.fillStyle = mark;
+      ctx.fillRect(Math.round(g.x - 6), Math.round(y - 6), 12, 3);
+    }
   },
 
   _drawCommander(ctx, c) {
@@ -320,6 +334,13 @@ const Render = {
       ctx.fillRect(0, 0, w, h);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = prev;
+    }
+
+    if (Game.flash > 0.01) {
+      ctx.globalAlpha = U.quantise(Game.flash, 4) * 0.55;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
     }
 
     if (Game.hitFlash > 0.01) {

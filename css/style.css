@@ -275,6 +275,11 @@ canvas { image-rendering: pixelated; }
   bottom: max(12px, env(safe-area-inset-bottom));
   display: flex;
   gap: 4px;
+  /* Wraps upward: a late run can own a dozen tools, and a single row of 44px
+   * slots runs off the side of the screen and under the rally control. */
+  flex-wrap: wrap-reverse;
+  justify-content: flex-end;
+  max-width: min(50vw, 400px);
 }
 .tool-slot {
   position: relative;

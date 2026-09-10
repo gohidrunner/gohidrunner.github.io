@@ -226,6 +226,90 @@ const CFG = {
     cardsPerLevel: 3,
   },
 
+  /* ------------------------------------------------------------- upgrades
+   * Per-level numbers for every passive. The registry in js/upgrades.js holds
+   * names, descriptions and icons; every quantity lives here so rebalancing
+   * never means opening logic. All are "per level" unless noted.
+   * --------------------------------------------------------------------- */
+  upgrades: {
+    boots:      { perLevel: 0.07 },   // commander speed
+    whistle:    { perLevel: 0.18 },   // cohesion strength
+    grazing:    { perLevel: 0.05 },   // aydin speed
+    beacon:     { perLevel: 0.14 },   // recruit rate
+    slippery:   { perLevel: 0.08 },   // gohids miss this often
+    wideRally:  { perLevel: 0.16 },   // rally radius
+    ironNerve:  { perLevel: 0.14 },   // panic duration cut
+    amulet:     { perLevel: 0.12 },   // exp multiplier
+    clover:     { perLevel: 0.15 },   // luck: better cards and chests
+    coldAura:   { radius: 250, perLevel: 0.09 },
+    longLegs:   { perLevel: 0.22 },   // fraction of the rally speed cost removed
+    secondWind: { threshold: 5, revive: 3 },   // once per run
+    sharpEyes:  { perLevel: 0.45 },   // pickup magnet range
+    thickHide:  { perLevel: 0.13 },   // scatter duration cut
+    vanguard:   { perLevel: 0.11 },   // share of the herd's leading edge immune
+    fastHands:  { perLevel: 0.10 },   // tool cooldown cut
+    bigHeart:   { perLevel: 0.16 },   // character aydin spawn rate
+    stampede:   { perLevel: 0.09, duration: 3 },  // herd speed after a capture
+  },
+
+  /* ---------------------------------------------------------------- tools
+   * `kind` routes behaviour in js/tools.js: cast fires on a cooldown, aura is
+   * continuous, orbit maintains escorts, passive just sets a buff. Adding a
+   * tool should be a table entry, an icon and one case in the fire switch.
+   * --------------------------------------------------------------------- */
+  tools: {
+    smokeBomb:   { kind: 'cast',  cooldown: 7.0, radius: 150, duration: 3.0,
+                   radiusPerLevel: 22, durationPerLevel: 0.35 },
+    netTrap:     { kind: 'cast',  cooldown: 6.0, duration: 2.5, range: 520,
+                   durationPerLevel: 0.35, targetsPerLevel: 0.5 },
+    flashbang:   { kind: 'cast',  cooldown: 22.0, duration: 2.2,
+                   durationPerLevel: 0.4 },
+    decoyDummy:  { kind: 'cast',  cooldown: 12.0, duration: 5.0, pull: 700,
+                   durationPerLevel: 0.6 },
+    barricade:   { kind: 'cast',  cooldown: 9.0, duration: 8.0, length: 120,
+                   push: 260, lengthPerLevel: 24 },
+    slingshot:   { kind: 'cast',  cooldown: 4.0, knockback: 400, range: 560,
+                   knockPerLevel: 45 },
+    tunnel:      { kind: 'cast',  cooldown: 18.0, distance: 600,
+                   distancePerLevel: 40 },
+    bola:        { kind: 'cast',  cooldown: 8.0, duration: 3.0, slow: 0.55,
+                   range: 520, durationPerLevel: 0.35 },
+    firecracker: { kind: 'cast',  cooldown: 10.0, radius: 320, flee: 3.0,
+                   radiusPerLevel: 40 },
+
+    piedPiper:   { kind: 'aura',  radiusMul: 0.90, perLevel: 0.045 },
+    dustCloud:   { kind: 'aura',  radius: 190, slow: 0.30,
+                   radiusPerLevel: 24, slowPerLevel: 0.035 },
+    warDrum:     { kind: 'aura',  speed: 0.12, perLevel: 0.025 },
+    lantern:     { kind: 'aura',  radius: 700, radiusPerLevel: 90 },
+
+    outriders:   { kind: 'orbit', count: 2, countPerLevel: 0.5, radius: 96,
+                   speed: 1.5, respawn: 8.0 },
+    shepherds:   { kind: 'passive', charBoost: 0.25, perLevel: 0.0 },
+  },
+
+  /* ------------------------------------------------------------ evolutions
+   * Both ingredients at max level fuse automatically. `needs` entries are
+   * upgrade ids; `needsCharacter` waits on a living character aydin.
+   * --------------------------------------------------------------------- */
+  evolutions: {
+    blackout:    { from: ['smokeBomb', 'dustCloud'] },
+    snareWeb:    { from: ['netTrap', 'bola'], radius: 240 },
+    ironHerd:    { from: ['piedPiper', 'whistle'] },
+    phantomHerd: { from: ['decoyDummy'], needsCharacter: 'trickster', fakes: 5 },
+    honourGuard: { from: ['outriders', 'vanguard'], count: 6 },
+  },
+
+  /* --------------------------------------------------------- level-up cards */
+  cards: {
+    count: 3,
+    // Luck shifts weight toward tools and evolutions rather than raw stats,
+    // so a lucky roll feels different rather than merely better.
+    baseToolWeight: 1.0,
+    basePassiveWeight: 1.0,
+    luckToolBonus: 0.35,
+  },
+
   /* --------------------------------------------------------------- minimap */
   minimap: {
     size:       148,     // css px, square

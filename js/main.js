@@ -42,6 +42,7 @@ const Main = {
 
     Main.resize(true);
     Save.load();
+    Upgrades.init();          // build the id index before anything resets
     Audio2.enabled = Save.settings.sfx;
     Audio2.volume = Save.settings.volume;
     Game.init();

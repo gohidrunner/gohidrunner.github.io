@@ -50,6 +50,23 @@ const Game = {
   shake: 0,
   hitFlash: 0,               // red vignette pulse when an aydin is lost
   gainFlash: 0,
+  flash: 0,                  // white full-screen pop (evolutions, flashbang)
+  freeze: 0,                 // freeze-frame seconds; see the note in update()
+  stampedeT: 0,
+  secondWindUsed: false,
+
+  // Derived from the upgrades a player owns. Rebuilt whole, never patched --
+  // see the header of js/upgrades.js for why.
+  buffs: null,
+
+  // Values entities read every frame that upgrades are allowed to change.
+  // Recomputed only when an upgrade is taken, so the hot loop reads a plain
+  // number instead of walking the upgrade list.
+  tuning: {
+    panicTime: CFG.aydin.panicTime,
+    cohesionStrength: 1,
+    rallySlow: CFG.commander.rallySlow,
+  },
 
   // Multipliers that later systems (upgrades, modifiers, events) write into.
   // Nothing in step 1 changes them; they exist so that when those systems land
@@ -94,6 +111,13 @@ const Game = {
     Game.shake = 0;
     Game.hitFlash = 0;
     Game.gainFlash = 0;
+    Game.flash = 0;
+    Game.freeze = 0;
+    Game.stampedeT = 0;
+    Game.secondWindUsed = false;
+    Upgrades.reset();
+    Tools.reset();
+    Game.tools = Tools.active;
 
     Game.stats = {
       peakHerd: 0, lost: 0, created: 0, banished: 0,
@@ -141,7 +165,16 @@ const Game = {
       return;
     }
 
+    // Freeze-frame: an evolution stops the world for a moment so the player
+    // registers what just happened. Nothing moves while it runs.
+    if (Game.freeze > 0) {
+      Game.freeze -= dt;
+      Game.flash = Math.max(0, Game.flash - dt * 3);
+      return;
+    }
+
     Game.time += dt;
+    if (Game.stampedeT > 0) Game.stampedeT -= dt;
     Game._updateRally(dt);
 
     // --- grids: one consistent snapshot for every steering decision --------
@@ -188,10 +221,13 @@ const Game = {
       }
     }
 
+    Tools.update(dt);
+
     Particles.update(dt);
     Game.shake = Math.max(0, Game.shake - dt * 24);
     Game.hitFlash = Math.max(0, Game.hitFlash - dt * 3.5);
     Game.gainFlash = Math.max(0, Game.gainFlash - dt * 4);
+    Game.flash = Math.max(0, Game.flash - dt * 3);
 
     Game._compact();
 
@@ -234,6 +270,29 @@ const Game = {
     Input.rally = (Game.time % 9) > 7.2;
   },
 
+  /* Fold the upgrade buffs into the multiplier bag entities read. Called
+   * whenever an upgrade is taken -- never per frame. */
+  recomputeMods() {
+    const b = Game.buffs;
+    if (!b) return;
+
+    Game.mods.commanderSpeed = b.commanderSpeed;
+    Game.mods.aydinSpeed = b.aydinSpeed * Tools.aydinSpeedAura();
+    Game.mods.recruitMul = b.recruitMul;
+    Game.mods.expMul = b.expMul;
+
+    Game.tuning.panicTime = CFG.aydin.panicTime * b.panicTimeMul;
+    Game.tuning.cohesionStrength = b.cohesionStrength;
+
+    // Iron Herd removes the rally speed penalty outright; Long Legs chips away
+    // at it. Both express the same idea, so they share one number.
+    const relief = Upgrades.hasEvolution('ironHerd') ? 1 : b.rallySlowRelief;
+    const penalty = 1 - CFG.commander.rallySlow;
+    Game.tuning.rallySlow = 1 - penalty * (1 - relief);
+
+    Game.tools = Tools.active;
+  },
+
   /* ----------------------------------------------------------- progression */
 
   /* Cost of going from `level` to `level + 1`. */
@@ -246,9 +305,18 @@ const Game = {
     Game.expToNext = Game.expForLevel(Game.level);
     Game.stats.level = Game.level;
     Audio2.levelUp();
-    UI.banner('LEVEL ' + Game.level, 'level');
-    // The 3-card upgrade modal lands with the upgrade tables in the next step;
-    // levelling already runs and shows so the exp bar is not a decoration.
+
+    const cards = Upgrades.offer(CFG.cards.count);
+    if (!cards.length) {
+      // Everything is maxed. Three blank cards would be worse than saying
+      // nothing, so the level still lands, just without a choice.
+      UI.banner('LEVEL ' + Game.level, 'level');
+      return;
+    }
+    UI.showLevelUp(cards, (card) => {
+      Upgrades.take(card.id);
+      Audio2.chest();
+    });
   },
 
   /* ----------------------------------------------------------------- rally */
@@ -258,7 +326,11 @@ const Game = {
     Game.rallying = Input.rally;
 
     const F = CFG.aydin.flock;
-    const target = Game.rallying ? F.cohesionRadiusRally : F.cohesionRadius;
+    const b = Game.buffs;
+    const piper = Tools.cohesionRadiusMul();
+    const target = (Game.rallying
+      ? F.cohesionRadiusRally * (b ? b.rallyRadiusMul : 1)
+      : F.cohesionRadius) * piper;
     Game.cohesionRadius = U.damp(Game.cohesionRadius, target,
                                  1 / CFG.rally.snapTime, dt);
 
@@ -295,6 +367,21 @@ const Game = {
         const a = cand[j];
         if (!a.alive || a.invuln > 0) continue;
         if (U.dist2(g.x, g.y, a.x, a.y) > G.grabRadius * G.grabRadius) continue;
+        // Cheapest check first: a flat dice roll, then a positional test,
+        // then the escort scan.
+        if (Game.buffs && Game.buffs.missChance > 0
+            && Math.random() < Game.buffs.missChance) {
+          g.grabCd = CFG.gohid.grabCooldown;
+          break;
+        }
+        if (Game._vanguardProtected(a)) {
+          g.grabCd = CFG.gohid.grabCooldown;
+          break;
+        }
+        if (Tools.intercept(g)) {
+          g.grabCd = CFG.gohid.grabCooldown;
+          break;
+        }
         if (Game._rallyProtected(a)) {
           // The grab is spent either way, so a protected herd genuinely stalls
           // the gohid rather than letting it retry every frame until it wins.
@@ -320,6 +407,24 @@ const Game = {
     return Math.random() < CFG.rally.captureResist;
   },
 
+  /* Vanguard: the leading edge of the herd cannot be grabbed. "Leading" is
+   * measured along the commander's heading, so it protects the aydins running
+   * ahead of you into danger, which is the point of the upgrade. */
+  _vanguardProtected(a) {
+    const share = Game.buffs ? Game.buffs.vanguard : 0;
+    if (share <= 0) return false;
+    const c = Game.commander;
+    const len = Math.hypot(c.vx, c.vy);
+    if (len < 1) return false;
+    const hx = c.vx / len, hy = c.vy / len;
+    // Projecting onto the heading gives a 0..1 rank without sorting the whole
+    // herd every frame.
+    const proj = (a.x - c.x) * hx + (a.y - c.y) * hy;
+    const reach = Math.max(60, Game.cohesionRadius);
+    const rank = U.clamp(proj / reach, 0, 1);
+    return rank >= (1 - share);
+  },
+
   _capture(aydin, gohid) {
     aydin.alive = false;
     gohid.grabCd = CFG.gohid.grabCooldown;
@@ -337,8 +442,32 @@ const Game = {
     Game.shake = Math.max(Game.shake, CFG.fx.shake.capture);
     Game.hitFlash = 1;
 
+    // Stampede turns the loss into a chance to escape.
+    if (Game.buffs && Game.buffs.stampede > 0) {
+      Game.stampedeT = CFG.upgrades.stampede.duration;
+    }
+
     // The consequence: a new hunter, born where you lost one.
     Game.queueGohid(aydin.x, aydin.y);
+
+    Game._checkSecondWind();
+  },
+
+  /* Once per run, a collapsing herd gets three back. It fires on the way down
+   * rather than at zero, so it rescues a run instead of undoing a death that
+   * has already happened. */
+  _checkSecondWind() {
+    if (!Game.buffs || !Game.buffs.secondWind || Game.secondWindUsed) return;
+    if (Game.aydins.length >= CFG.upgrades.secondWind.threshold) return;
+    Game.secondWindUsed = true;
+    const c = Game.commander;
+    for (let i = 0; i < CFG.upgrades.secondWind.revive; i++) {
+      const a = (Math.PI * 2 * i) / CFG.upgrades.secondWind.revive;
+      Game.aydins.push(new Aydin(c.x + Math.cos(a) * 40,
+                                 c.y + Math.sin(a) * 40, false));
+    }
+    UI.banner('SECOND WIND', 'level');
+    Audio2.levelUp();
   },
 
   /* ------------------------------------------------- commander gets touched */
@@ -360,7 +489,8 @@ const Game = {
 
   _scatter(g) {
     const c = Game.commander;
-    Game.scatterTimer = CFG.aydin.scatter.duration;
+    Game.scatterTimer = CFG.aydin.scatter.duration
+                      * (Game.buffs ? Game.buffs.scatterMul : 1);
     Game.stats.scatters++;
     c.knock(g.x, g.y);
     Audio2.scatter();

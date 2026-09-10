@@ -65,12 +65,29 @@ sandbox.UI = {
   banners: [],
   banner(text) { this.banners.push(text); },
   clearBanners() { this.banners.length = 0; },
+  show() {}, hide() {}, showChest() {},
+  // A level-up in the browser opens a modal and waits. Here it resolves
+  // immediately, taking the first card offered -- a player who always picks
+  // something is a far better model of a real run than one who never levels,
+  // and it exercises the whole take/rebuild/sync path on every balance sweep.
+  // --no-upgrades models the opposite extreme.
+  showLevelUp(cards, onPick) {
+    if (SKIP_UPGRADES || !cards.length || !onPick) return;
+    onPick(cards[0]);
+  },
 };
+const SKIP_UPGRADES = process.argv.includes('--no-upgrades');
+
+// tools.js reads the viewport for the flashbang's "everything on screen"
+// radius and draws with sprites; neither concerns the simulation.
+sandbox.Render = { w: 1280, h: 720, zoom: 1 };
+sandbox.Sprites = { tinted: () => null, silhouette: () => null, base: {} };
 
 vm.createContext(sandbox);
 
 for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',
-                 'js/particles.js', 'js/entities.js', 'js/game.js']) {
+                 'js/particles.js', 'js/entities.js', 'js/upgrades.js',
+                 'js/tools.js', 'js/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -81,6 +98,9 @@ for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',
 const { CFG, Game, U } = vm.runInContext('({ CFG, Game, U })', sandbox);
 const Input = sandbox.Input;
 const GohidClass = vm.runInContext('Gohid', sandbox);
+const Upgrades = vm.runInContext('Upgrades', sandbox);
+const Tools = vm.runInContext('Tools', sandbox);
+Upgrades.init();
 const AydinClass = vm.runInContext('Aydin', sandbox);
 
 /* --set a.b.c=value overrides any config value before the sim runs, so a
@@ -360,6 +380,180 @@ function scatterDutyCycle(cooldown) {
         broken > 0.97 && now < 0.7,
         'at 1.0s: ' + Math.round(broken * 100) + '%  vs at '
         + CFG.commander.touchCooldown + 's: ' + Math.round(now * 100) + '%');
+}
+
+console.log('\n-- upgrades ------------------------------------------------');
+
+{
+  // The registry is hand-written data, and a typo in it produces a card that
+  // renders blank or an effect that silently never applies. These checks are
+  // cheap and catch exactly that.
+  const ids = Object.create(null);
+  let dupes = 0, badDesc = 0, badIcon = 0, badApply = 0;
+  for (const u of Upgrades.list) {
+    if (ids[u.id]) dupes++;
+    ids[u.id] = true;
+    if (typeof u.icon !== 'function') badIcon++;
+    if (typeof u.apply !== 'function') badApply++;
+    for (let lv = 0; lv <= u.max; lv++) {
+      try {
+        const d = u.desc(lv);
+        if (typeof d !== 'string' || !d.length) badDesc++;
+      } catch (e) { badDesc++; }
+    }
+  }
+  check('every upgrade id is unique', dupes === 0, dupes + ' duplicates');
+  check('every upgrade describes itself at every level', badDesc === 0,
+        badDesc + ' bad descriptions');
+  check('every upgrade has an icon and an apply', badIcon === 0 && badApply === 0);
+
+  // Every tool in the registry must have numbers, and every set of numbers
+  // must have a registry entry -- otherwise one of them is dead weight.
+  let missingCfg = 0;
+  const registryTools = Object.create(null);
+  for (const u of Upgrades.list) {
+    if (u.kind !== 'tool') continue;
+    registryTools[u.id] = true;
+    if (!CFG.tools[u.id]) missingCfg++;
+  }
+  let orphanCfg = 0;
+  for (const id in CFG.tools) if (!registryTools[id]) orphanCfg++;
+  check('every tool has config numbers and vice versa',
+        missingCfg === 0 && orphanCfg === 0,
+        missingCfg + ' without config, ' + orphanCfg + ' without a registry entry');
+}
+
+{
+  newRun();
+  // Buffs are rebuilt from scratch, so taking the same upgrade must land on
+  // exactly the configured value rather than accumulating rounding or drift.
+  Upgrades.take('boots');
+  Upgrades.take('boots');
+  Upgrades.take('boots');
+  const want = 1 + CFG.upgrades.boots.perLevel * 3;
+  check('a passive applies exactly its configured value',
+        Math.abs(Game.buffs.commanderSpeed - want) < 1e-9,
+        Game.buffs.commanderSpeed.toFixed(4) + ' vs ' + want.toFixed(4));
+
+  // Rebuilding twice must be identical -- the whole point of rebuilding from
+  // scratch instead of incrementing a live value.
+  const before = Game.buffs.commanderSpeed;
+  Upgrades.rebuild();
+  Upgrades.rebuild();
+  check('rebuilding the buff bag is idempotent',
+        Game.buffs.commanderSpeed === before);
+
+  check('an upgrade cannot exceed its max level', (() => {
+    for (let i = 0; i < 20; i++) Upgrades.take('boots');
+    return Upgrades.levelOf('boots') === Upgrades.byId.boots.max;
+  })(), 'boots at ' + Upgrades.levelOf('boots'));
+}
+
+{
+  newRun();
+  // A maxed upgrade must never be offered again, or the player is handed a
+  // card that does nothing.
+  for (let i = 0; i < 5; i++) Upgrades.take('boots');
+  let offeredMaxed = 0, dupeInOffer = 0;
+  for (let trial = 0; trial < 200; trial++) {
+    const cards = Upgrades.offer(3);
+    const seen = Object.create(null);
+    for (const c of cards) {
+      if (c.id === 'boots') offeredMaxed++;
+      if (seen[c.id]) dupeInOffer++;
+      seen[c.id] = true;
+    }
+  }
+  check('a maxed upgrade is never offered', offeredMaxed === 0,
+        offeredMaxed + ' offers over 200 draws');
+  check('one draw never offers the same card twice', dupeInOffer === 0,
+        dupeInOffer + ' duplicates');
+}
+
+{
+  newRun();
+  Upgrades.take('smokeBomb');
+  const t = Tools.active.filter((x) => x.id === 'smokeBomb')[0];
+  check('taking a tool puts it in the active list', !!t && t.level === 1);
+  check('the tool tray sees it through Game.tools',
+        Game.tools === Tools.active && Game.tools.length === 1);
+
+  const base = t ? t.cooldown : 0;
+  for (let i = 0; i < 3; i++) Upgrades.take('fastHands');
+  Tools.sync();
+  const after = Tools.active.filter((x) => x.id === 'smokeBomb')[0].cooldown;
+  check('cooldown reduction reaches the tool', after < base,
+        base.toFixed(2) + 's -> ' + after.toFixed(2) + 's');
+}
+
+{
+  newRun();
+  // Evolutions fuse only when BOTH ingredients are maxed.
+  const evo = CFG.evolutions.snareWeb.from;
+  for (let i = 0; i < 5; i++) Upgrades.take(evo[0]);
+  check('one maxed ingredient does not evolve', !Upgrades.hasEvolution('snareWeb'));
+  for (let i = 0; i < 5; i++) Upgrades.take(evo[1]);
+  check('both maxed ingredients fuse automatically',
+        Upgrades.hasEvolution('snareWeb'));
+  check('the fusion freezes the frame briefly', Game.freeze > 0,
+        'freeze ' + Game.freeze.toFixed(2) + 's');
+}
+
+{
+  newRun();
+  // Slippery is a flat miss chance; at 100% nothing can ever be caught.
+  CFG.upgrades.slippery.perLevel = 0.2;      // 5 levels -> 1.0
+  for (let i = 0; i < 5; i++) Upgrades.take('slippery');
+  const c = Game.commander;
+  Game.gohids.length = 0;
+  for (let i = 0; i < 6; i++) {
+    const g = new GohidClass(c.x, c.y + 200);
+    Game.gohids.push(g);
+  }
+  Game.aydins.forEach((a) => { a.invuln = 0; a.x = c.x; a.y = c.y + 200; });
+  const before = Game.aydins.length;
+  run(3);
+  check('a 100% miss chance means nothing is ever captured',
+        Game.stats.lost === 0, Game.stats.lost + ' lost');
+  CFG.upgrades.slippery.perLevel = 0.08;     // restore
+}
+
+{
+  newRun();
+  // Second Wind fires once and only once.
+  Upgrades.take('secondWind');
+  while (Game.aydins.length > 2) Game.aydins.pop();
+  Game._checkSecondWind();
+  const afterFirst = Game.aydins.length;
+  check('second wind revives the herd once',
+        afterFirst === 2 + CFG.upgrades.secondWind.revive,
+        'herd ' + afterFirst);
+  while (Game.aydins.length > 2) Game.aydins.pop();
+  Game._checkSecondWind();
+  check('second wind cannot fire twice in a run', Game.aydins.length === 2,
+        'herd ' + Game.aydins.length);
+}
+
+{
+  newRun();
+  // Every tool must be castable without throwing. Firing each one directly is
+  // the only way to be sure a switch case has no typo in it -- a broken tool
+  // would otherwise only surface when it happened to come up as a card.
+  let threw = [];
+  for (const u of Upgrades.list) {
+    if (u.kind !== 'tool') continue;
+    try {
+      newRun();
+      Upgrades.take(u.id);
+      const t = Tools.active.filter((x) => x.id === u.id)[0];
+      if (!t) { threw.push(u.id + '(inactive)'); continue; }
+      for (let i = 0; i < 60 * 30; i++) Game.update(1 / 60);
+    } catch (e) {
+      threw.push(u.id + ': ' + e.message);
+    }
+  }
+  check('every tool runs for 30s without throwing', threw.length === 0,
+        threw.join(', '));
 }
 
 console.log('\n-- the spiral ----------------------------------------------');

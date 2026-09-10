@@ -34,7 +34,10 @@ class Commander {
 
   update(dt, game) {
     const C = CFG.commander;
-    const speed = C.speed * (game.rallying ? C.rallySlow : 1) * game.mods.commanderSpeed;
+    // rallySlow comes from tuning, not config: Long Legs and the Iron Herd
+    // evolution both reduce the rally speed penalty.
+    const speed = C.speed * (game.rallying ? game.tuning.rallySlow : 1)
+                * game.mods.commanderSpeed;
 
     this.vx = Input.mx * speed;
     this.vy = Input.my * speed;
@@ -105,7 +108,7 @@ class Aydin {
       fleeY += (dy / d) * w;
       if (w > threat) threat = w;
     }
-    if (threat > 0) this.panic = A.panicTime;
+    if (threat > 0) this.panic = game.tuning.panicTime;
 
     // ---- separation: keep the herd a crowd, not a single stacked sprite ---
     let sepX = 0, sepY = 0;
@@ -123,7 +126,11 @@ class Aydin {
     }
 
     const panicking = this.panic > 0;
-    const maxSpeed = A.speed * game.mods.aydinSpeed
+    // Stampede: the whole herd runs faster for a few seconds after any
+    // capture, turning a loss into a chance to break away.
+    const stampede = (game.stampedeT > 0 && game.buffs)
+                   ? (1 + game.buffs.stampede) : 1;
+    const maxSpeed = A.speed * game.mods.aydinSpeed * stampede
                    * (panicking ? A.panicSpeedMul : 1)
                    * (this.joining ? A.joinSpeedMul : 1);
 
@@ -187,8 +194,9 @@ class Aydin {
     // Rallied aydins turn sharply, panicking or not -- a rallied aydin now has
     // somewhere to be, so excluding panic here would leave it heading home at
     // the loose wandering responsiveness and undo most of the blend above.
-    const k = (game.rallying && !this.joining && game.scatterTimer <= 0)
-            ? F.rallyStrength : F.cohesionStrength;
+    const k = ((game.rallying && !this.joining && game.scatterTimer <= 0)
+            ? F.rallyStrength : F.cohesionStrength)
+            * game.tuning.cohesionStrength;
     let ax = (dvx - this.vx) * k;
     let ay = (dvy - this.vy) * k;
     const al = Math.sqrt(ax * ax + ay * ay);
@@ -227,14 +235,48 @@ class Gohid {
     this.face = 1;
     this.bob = Math.random() * 10;
     this.spawnFlash = 0.35;
+
+    // Status effects, all simple countdown timers. Tools set them; this class
+    // is the only thing that reads them, so a new tool never has to know how
+    // movement works -- it just calls the applier below.
+    this.stunT = 0;    // cannot act at all
+    this.rootT = 0;    // cannot move, still turns
+    this.blindT = 0;   // moves, but wanders instead of hunting
+    this.slowT = 0;
+    this.slowAmt = 0;
+    this.blindA = Math.random() * Math.PI * 2;
   }
+
+  /* Refresh rather than stack. Auras call this every frame they contain a
+   * gohid, so adding durations would make a gohid that walked through a dust
+   * cloud slow for the rest of the run. */
+  applySlow(amount, duration) {
+    if (amount >= this.slowAmt) this.slowAmt = amount;
+    if (duration > this.slowT) this.slowT = duration;
+  }
+
+  applyStun(duration) { if (duration > this.stunT) this.stunT = duration; }
+  applyRoot(duration) { if (duration > this.rootT) this.rootT = duration; }
+  applyBlind(duration) { if (duration > this.blindT) this.blindT = duration; }
+
+  get disabled() { return this.stunT > 0 || this.rootT > 0; }
 
   update(dt, game) {
     const G = CFG.gohid;
     if (this.grabCd > 0) this.grabCd -= dt;
     if (this.spawnFlash > 0) this.spawnFlash -= dt;
 
-    const speed = G.speed * game.mods.gohidSpeed;
+    if (this.stunT > 0) this.stunT -= dt;
+    if (this.rootT > 0) this.rootT -= dt;
+    if (this.blindT > 0) this.blindT -= dt;
+    if (this.slowT > 0) { this.slowT -= dt; if (this.slowT <= 0) this.slowAmt = 0; }
+
+    // Stunned or rooted: hold position entirely. Timers above still run, so a
+    // gohid always recovers.
+    if (this.disabled) { this.vx = 0; this.vy = 0; return; }
+
+    let speed = G.speed * game.mods.gohidSpeed;
+    if (this.slowT > 0) speed *= (1 - this.slowAmt);
 
     if (this.leaving) {
       // Walk to the nearest edge and be deleted on arrival.
@@ -262,6 +304,7 @@ class Gohid {
 
     // ---- target ----------------------------------------------------------
     this.retarget -= dt;
+    if (this.lure && this.lure.dead) this.lure = null;
     if (this.retarget <= 0 || !this.target || !this.target.alive) {
       this.retarget = G.retargetInterval;
       this.target = game.aydinGrid.nearest(this.x, this.y, 3000,
@@ -269,7 +312,19 @@ class Gohid {
     }
 
     let dvx = 0, dvy = 0;
-    if (this.target) {
+    if (this.blindT > 0) {
+      // Blinded: still moving, but no longer toward anything. This is what
+      // makes smoke a genuine escape rather than a slow.
+      this.blindA += U.rand(-3, 3) * dt;
+      dvx = Math.cos(this.blindA) * speed * 0.55;
+      dvy = Math.sin(this.blindA) * speed * 0.55;
+    } else if (this.lure) {
+      // A decoy outranks the herd for as long as it lasts.
+      const dx = this.lure.x - this.x, dy = this.lure.y - this.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      dvx = (dx / d) * speed;
+      dvy = (dy / d) * speed;
+    } else if (this.target) {
       const dx = this.target.x - this.x, dy = this.target.y - this.y;
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
       dvx = (dx / d) * speed;
