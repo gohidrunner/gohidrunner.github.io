@@ -212,21 +212,43 @@ newRun();
   const tight = Game.cohesionRadius;
   check('cohesion radius collapses on rally',
         loose > 250 && tight < 95, loose.toFixed(0) + ' -> ' + tight.toFixed(0));
+}
 
-  // The point of rally: measure how tightly the herd actually packs.
-  const spread = () => {
-    const c = Game.commander;
-    let s = 0;
-    for (const a of Game.aydins) s += Math.hypot(a.x - c.x, a.y - c.y);
-    return s / Math.max(1, Game.aydins.length);
-  };
-  const tightSpread = spread();
+/* How tightly a CALM herd packs, rallied vs not, from an identical start.
+ *
+ * The first version of this ran the herd for 1s rallied and then 3s released
+ * and compared the two. That failed about once in thirty runs (108px rallied
+ * vs 104px loose) because it was measuring wander noise: cohesion only pulls
+ * once an aydin is outside the radius, so a herd that begins near the
+ * commander stays near it whether or not rally is held, and idle jitter
+ * decides the winner. Both arms now start from the same deterministic ring,
+ * well outside the loose radius, and run for the same duration. */
+function calmHerdScenario(rally) {
+  newRun();
+  Game.gohids.length = 0;          // no panic, no captures -- cohesion only
+  Game.pending.length = 0;
+  const c = Game.commander;
+  Game.aydins.forEach((a, i) => {
+    const ang = (Math.PI * 2 * i) / Game.aydins.length;
+    a.x = c.x + Math.cos(ang) * 340;
+    a.y = c.y + Math.sin(ang) * 340;
+    a.vx = 0; a.vy = 0;
+    a.invuln = 0;
+  });
+  Input.rally = rally;
+  run(2.5);
   Input.rally = false;
-  run(3);
-  const looseSpread = spread();
-  check('herd is measurably tighter while rallying',
-        tightSpread < looseSpread,
-        'rallied ' + tightSpread.toFixed(0) + 'px vs loose ' + looseSpread.toFixed(0) + 'px');
+  let s = 0;
+  for (const a of Game.aydins) s += Math.hypot(a.x - c.x, a.y - c.y);
+  return s / Math.max(1, Game.aydins.length);
+}
+
+{
+  const rallied = calmHerdScenario(true);
+  const released = calmHerdScenario(false);
+  check('rally packs a calm herd tighter than not rallying',
+        rallied < released * 0.7,
+        'rallied ' + rallied.toFixed(0) + 'px vs released ' + released.toFixed(0) + 'px');
 }
 
 /* Rally under real pressure, measured as an A/B against the identical
