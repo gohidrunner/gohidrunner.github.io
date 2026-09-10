@@ -82,6 +82,11 @@ class Aydin {
     this.face = 1;
     this.bob = Math.random() * 10;   // desynchronised so the herd never pulses
     this.wanderA = Math.random() * Math.PI * 2;
+    this.character = null;           // set when this is a named aydin
+    // Aura speed is written by Characters._applyAuras once per frame and read
+    // below. The stamp means the herd is walked once, not reset and re-walked.
+    this.auraSpeed = 1;
+    this.auraStamp = -1;
   }
 
   update(dt, game) {
@@ -130,7 +135,8 @@ class Aydin {
     // capture, turning a loss into a chance to break away.
     const stampede = (game.stampedeT > 0 && game.buffs)
                    ? (1 + game.buffs.stampede) : 1;
-    const maxSpeed = A.speed * game.mods.aydinSpeed * stampede
+    const aura = (this.auraStamp === game.frame) ? this.auraSpeed : 1;
+    const maxSpeed = A.speed * game.mods.aydinSpeed * stampede * aura
                    * (panicking ? A.panicSpeedMul : 1)
                    * (this.joining ? A.joinSpeedMul : 1);
 
@@ -245,6 +251,16 @@ class Gohid {
     this.slowT = 0;
     this.slowAmt = 0;
     this.blindA = Math.random() * Math.PI * 2;
+
+    // Variant defaults; Variants.apply() overwrites these at spawn.
+    this.variant = 'gohid';
+    this.speedMul = 1;
+    this.sizeMul = 1;
+    this.grabRadius = CFG.gohid.grabRadius;
+    this.grabCount = 1;
+    this.canGrab = true;
+    this.revealed = true;
+    this.vt = 0;
   }
 
   /* Refresh rather than stack. Auras call this every frame they contain a
@@ -306,8 +322,12 @@ class Gohid {
     // Still held: it has given up nothing, but it cannot act either.
     if (this.disabled) { this.vx = 0; this.vy = 0; return; }
 
-    let speed = G.speed * game.mods.gohidSpeed;
+    let speed = G.speed * game.mods.gohidSpeed * this.speedMul;
     if (this.slowT > 0) speed *= (1 - this.slowAmt);
+
+    // Variant behaviour runs after the status gate above, so a stunned howler
+    // cannot howl and a rooted herder cannot push.
+    if (typeof Variants !== 'undefined') Variants.behave(this, dt, game);
 
     if (this.leaving) {
       // Walk to the nearest edge and be deleted on arrival.
@@ -325,7 +345,10 @@ class Gohid {
     if (this.lure && this.lure.dead) this.lure = null;
     if (this.retarget <= 0 || !this.target || !this.target.alive) {
       this.retarget = G.retargetInterval;
-      this.target = game.aydinGrid.nearest(this.x, this.y, 3000,
+      // Hunters beeline for the named aydins and ignore the crowd entirely.
+      const preferred = (typeof Variants !== 'undefined')
+        ? Variants.preferredTarget(this, game) : null;
+      this.target = preferred || game.aydinGrid.nearest(this.x, this.y, 3000,
         (a) => a.alive && a.invuln <= 0);
     }
 

@@ -281,6 +281,11 @@ const Tools = {
   /* Multiplier the herd gets from aura tools. Read at the point of use rather
    * than baked into the buffs bag, because it depends on tool level which can
    * change mid-run without a rebuild. */
+  magnetRange() {
+    const base = (Game.buffs ? Game.buffs.magnetMul : 1);
+    return base * Characters.magnetMul();
+  },
+
   aydinSpeedAura() {
     let mul = 1;
     for (let i = 0; i < Tools.active.length; i++) {
@@ -336,10 +341,7 @@ const Tools = {
       e.dead = CFG.tools.outriders.respawn;
       Particles.burst(e.x, e.y, 10, { speed: 150, life: 0.4, size: 3,
                                       colour: CFG.palette.aydin });
-      if (e.banish) {
-        gohid.beginLeaving();
-        Audio2.banish();
-      }
+      if (e.banish) Game.banishGohid(gohid);
       return true;
     }
     return false;

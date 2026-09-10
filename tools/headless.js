@@ -87,7 +87,8 @@ vm.createContext(sandbox);
 
 for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',
                  'js/particles.js', 'js/entities.js', 'js/upgrades.js',
-                 'js/tools.js', 'js/game.js']) {
+                 'js/tools.js', 'js/variants.js', 'js/characters.js',
+                 'js/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -100,7 +101,10 @@ const Input = sandbox.Input;
 const GohidClass = vm.runInContext('Gohid', sandbox);
 const Upgrades = vm.runInContext('Upgrades', sandbox);
 const Tools = vm.runInContext('Tools', sandbox);
+const Characters = vm.runInContext('Characters', sandbox);
+const Variants = vm.runInContext('Variants', sandbox);
 Upgrades.init();
+Characters.init();
 const AydinClass = vm.runInContext('Aydin', sandbox);
 
 /* --set a.b.c=value overrides any config value before the sim runs, so a
@@ -592,6 +596,210 @@ console.log('\n-- upgrades ------------------------------------------------');
         tools.length === 1 && passives.length === 1
         && tools[0].level === 1 && passives[0].maxLevel === 5,
         tools.length + ' tools, ' + passives.length + ' passives');
+}
+
+console.log('\n-- character aydins ----------------------------------------');
+
+{
+  // Registry sanity. A missing badge or colour produces an invisible marker
+  // and a portrait that never draws -- both silent.
+  const ids = Object.create(null);
+  let dupes = 0, bad = 0;
+  for (const c of Characters.list) {
+    if (ids[c.id]) dupes++;
+    ids[c.id] = true;
+    if (!c.name || !c.badge || !c.colour || !c.desc) bad++;
+  }
+  check('every character is unique and fully described',
+        dupes === 0 && bad === 0, dupes + ' dupes, ' + bad + ' incomplete');
+}
+
+{
+  newRun();
+  // Only one of each, ever -- including after one has been lost. A character
+  // that respawns makes losing it a temporary inconvenience.
+  for (let i = 0; i < 40; i++) Characters.spawn();
+  const counts = Object.create(null);
+  for (const c of Characters.active) counts[c.id] = (counts[c.id] || 0) + 1;
+  let over = 0;
+  for (const k in counts) if (counts[k] > 1) over++;
+  check('only one of each character exists at a time', over === 0,
+        Characters.active.length + ' active, ' + over + ' duplicated');
+  check('spawning stops once every character is out',
+        Characters.active.length === Characters.list.length,
+        Characters.active.length + ' of ' + Characters.list.length);
+}
+
+{
+  newRun();
+  const inst = Characters.spawn();
+  check('a character aydin joins the herd as a real aydin',
+        !!inst && Game.aydins.indexOf(inst.aydin) >= 0 && inst.aydin.character === inst);
+
+  // Losing one must be permanent and must be visible to the HUD.
+  inst.aydin.alive = false;
+  Characters.update(0.001);
+  check('losing a character marks it dead, not missing',
+        !inst.alive && Characters.active.indexOf(inst) >= 0,
+        'alive=' + inst.alive);
+  check('a lost character is counted', Game.stats.charactersLost === 1);
+}
+
+{
+  newRun();
+  // Shield blocks exactly one capture, anywhere in the herd.
+  const sh = Characters.list.filter((c) => c.id === 'shield')[0];
+  Characters.active.length = 0;
+  const a = Game.aydins[0];
+  const inst = { id: 'shield', name: 'SHIELD', badge: 'S', colour: '#8ab6ff',
+                 alive: true, aydin: a, t: 0, charges: 1 };
+  a.character = inst;
+  Characters.active.push(inst);
+  check('shield blocks the first capture', Characters.consumeShield() === true);
+  check('shield does not block a second', Characters.consumeShield() === false);
+}
+
+{
+  newRun();
+  // Medic at a guaranteed rate must actually put an aydin back.
+  const saved = CFG.characters.medic.chance;
+  CFG.characters.medic.chance = 1;
+  Characters.active.length = 0;
+  Characters.active.push({ id: 'medic', alive: true, aydin: Game.aydins[0], t: 0 });
+  const before = Game.aydins.length;
+  const ok = Characters.tryRecover(100, 100);
+  check('the medic recovers a captured aydin',
+        ok && Game.aydins.length === before + 1,
+        before + ' -> ' + Game.aydins.length);
+  CFG.characters.medic.chance = saved;
+}
+
+{
+  newRun();
+  Characters.active.length = 0;
+  const plain = Characters.expMul();
+  Characters.active.push({ id: 'elder', alive: true, aydin: Game.aydins[0], t: 0 });
+  check('the elder multiplies experience', Characters.expMul() > plain,
+        plain.toFixed(2) + ' -> ' + Characters.expMul().toFixed(2));
+
+  Characters.active.length = 0;
+  const wide = Characters.cohesionMul();
+  Characters.active.push({ id: 'banner', alive: true, aydin: Game.aydins[0], t: 0 });
+  check('the banner tightens the herd', Characters.cohesionMul() < wide,
+        wide.toFixed(2) + ' -> ' + Characters.cohesionMul().toFixed(2));
+}
+
+console.log('\n-- gohid variants ------------------------------------------');
+
+{
+  let bad = 0;
+  for (const id in CFG.variants) {
+    const v = CFG.variants[id];
+    if (typeof v.after !== 'number' || typeof v.weight !== 'number'
+        || !v.tint || typeof v.speedMul !== 'number') bad++;
+  }
+  check('every variant is fully specified', bad === 0, bad + ' incomplete');
+
+  // Nothing exotic may appear in the opening seconds.
+  newRun();
+  Game.time = 0;
+  let earlyOther = 0;
+  for (let i = 0; i < 300; i++) if (Variants.roll() !== 'gohid') earlyOther++;
+  check('only the baseline gohid exists at the start', earlyOther === 0,
+        earlyOther + ' exotic rolls at t=0');
+
+  Game.time = 9999;
+  const seen = Object.create(null);
+  for (let i = 0; i < 4000; i++) seen[Variants.roll()] = true;
+  check('every variant is reachable late in a run',
+        Object.keys(seen).length === Object.keys(CFG.variants).length,
+        Object.keys(seen).length + ' of ' + Object.keys(CFG.variants).length);
+}
+
+{
+  newRun();
+  // The non-grabbing variants must never take an aydin. They are dangerous
+  // through what they do to the herd, not by eating it.
+  for (const id of ['howler', 'herder']) {
+    newRun();
+    Game.gohids.length = 0;
+    const c = Game.commander;
+    for (let i = 0; i < 8; i++) {
+      const g = new GohidClass(c.x, c.y);
+      Variants.apply(g, id);
+      Game.gohids.push(g);
+    }
+    Game.aydins.forEach((a) => { a.invuln = 0; a.x = c.x; a.y = c.y; });
+    run(4);
+    check(id + ' never captures anything', Game.stats.lost === 0,
+          Game.stats.lost + ' captured');
+  }
+}
+
+{
+  newRun();
+  const g = new GohidClass(0, 0);
+  Variants.apply(g, 'brute');
+  check('the brute takes two at once', g.grabCount === 2);
+  Variants.apply(g, 'runner');
+  check('the runner is fast with a small reach',
+        g.speedMul > 1.2 && g.grabRadius < CFG.gohid.grabRadius,
+        'speed x' + g.speedMul + ', reach ' + g.grabRadius);
+  Variants.apply(g, 'stalker');
+  check('the stalker starts hidden', g.revealed === false);
+}
+
+{
+  newRun();
+  // Banishing a splitter is the wrong reflex: it should leave two behind.
+  Game.gohids.length = 0;
+  const g = new GohidClass(Game.commander.x + 300, Game.commander.y);
+  Variants.apply(g, 'splitter');
+  Game.gohids.push(g);
+  const before = Game.gohids.length;
+  Game.banishGohid(g);
+  const runners = Game.gohids.filter((x) => x.variant === 'runner').length;
+  check('banishing a splitter leaves two runners behind',
+        Game.gohids.length === before + CFG.variants.splitter.splitCount
+        && runners === CFG.variants.splitter.splitCount,
+        before + ' -> ' + Game.gohids.length + ', ' + runners + ' runners');
+}
+
+{
+  newRun();
+  // Hunters ignore the crowd entirely and go for the named aydin.
+  const inst = Characters.spawn();
+  const g = new GohidClass(inst.aydin.x + 400, inst.aydin.y);
+  Variants.apply(g, 'hunter');
+  const target = Variants.preferredTarget(g, Game);
+  check('a hunter targets a character aydin over the crowd',
+        target === inst.aydin);
+
+  const plain = new GohidClass(inst.aydin.x + 400, inst.aydin.y);
+  check('an ordinary gohid does not', Variants.preferredTarget(plain, Game) === null);
+}
+
+{
+  // Every variant must survive a real run. A typo in one behaviour case would
+  // otherwise only surface once that variant happened to be rolled.
+  const threw = [];
+  for (const id in CFG.variants) {
+    try {
+      newRun();
+      Game.gohids.length = 0;
+      const c = Game.commander;
+      for (let i = 0; i < 6; i++) {
+        const g = new GohidClass(c.x + 200 + i * 30, c.y + 150);
+        Variants.apply(g, id);
+        Game.gohids.push(g);
+      }
+      run(20);
+    } catch (e) {
+      threw.push(id + ': ' + e.message);
+    }
+  }
+  check('every variant runs for 20s without throwing', threw.length === 0,
+        threw.join(', '));
 }
 
 console.log('\n-- the spiral ----------------------------------------------');

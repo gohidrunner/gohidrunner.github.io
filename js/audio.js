@@ -161,6 +161,16 @@ const Audio2 = {
                   filter: 'lowpass', filterFreq: 900 });
   },
 
+  /* The howler. Long, low and rising -- it has to be recognisable from
+   * off-screen, because the herd will scatter before the player sees why. */
+  howl() {
+    Audio2.tone({ type: 'sawtooth', freq: 90, slide: 260, dur: 0.75, vol: 0.20,
+                  filter: 'lowpass', filterFreq: 900, atk: 0.15 });
+    Audio2.tone({ type: 'square', freq: 135, slide: 330, dur: 0.7, vol: 0.09,
+                  atk: 0.2 });
+    Audio2.noise({ freq: 300, slide: 1400, dur: 0.6, vol: 0.10, q: 0.6 });
+  },
+
   /* A gohid gives up and wanders off. Small mercy, small sound. */
   banish() {
     Audio2.tone({ type: 'triangle', freq: 420, slide: 1100, dur: 0.22, vol: 0.14 });

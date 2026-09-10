@@ -266,6 +266,10 @@ const Render = {
       const on = (Math.floor(a.invuln * 12) & 1) === 0;
       cv = on ? Sprites.silhouette('aydin', CFG.palette.world.invulnFlash)
               : Sprites.tinted('aydin', null);
+    } else if (a.character) {
+      // Named aydins carry their own colour so they can be picked out of a
+      // crowd of a hundred identical ones at a glance.
+      cv = Sprites.tinted('aydin', a.character.colour, 0.42);
     } else if (a.panic > 0) {
       cv = Sprites.tinted('aydin', CFG.palette.world.panicTint,
                           CFG.palette.world.panicAmt);
@@ -274,10 +278,25 @@ const Render = {
     }
     if (!cv) return;
     ctx.drawImage(a.face < 0 ? Render.flipped(cv) : cv, x, y, size, size);
+    if (a.character) Render._badge(ctx, a.character.badge, a.x, y - 4,
+                                   a.character.colour);
+  },
+
+  /* A one-character marker above a sprite, drawn with the pixel font at a
+   * whole-pixel position so it does not blur. */
+  _badge(ctx, ch, wx, wy, colour) {
+    ctx.font = '10px "Gohid Pixel", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = CFG.palette.ink;
+    ctx.fillText(ch, Math.round(wx) + 1, Math.round(wy) + 1);
+    ctx.fillStyle = colour || CFG.palette.text;
+    ctx.fillText(ch, Math.round(wx), Math.round(wy));
+    ctx.textAlign = 'left';
   },
 
   _drawGohid(ctx, g) {
-    const size = CFG.gohid.sprite;
+    const size = CFG.gohid.sprite * (g.sizeMul || 1);
     const x = Math.round(g.x - size / 2);
     const y = Math.round(g.y - size + 6) + Render._bob(g);
 
@@ -294,14 +313,25 @@ const Render = {
       cv = Sprites.tinted('gohid', '#8d86a8', 0.55);
     } else {
       // Strong tint: both sprites are dark-haired head-and-shoulders photos
-      // and read almost identically at this size without it.
-      cv = Sprites.tinted('gohid', CFG.palette.gohidTint,
-                          g.leaving ? 0.22 : CFG.palette.gohidTintAmt);
+      // and read almost identically at this size without it. Each variant
+      // recolours the same sprite -- no per-variant art is authored.
+      const v = Variants.cfg(g.variant);
+      cv = Sprites.tinted('gohid', v.tint,
+                          g.leaving ? 0.22 : (v.tintAmt || CFG.palette.gohidTintAmt));
     }
     if (!cv) return;
-    if (g.leaving) ctx.globalAlpha = 0.5;
+    // Stalkers are barely there until they are close, or until a lantern is
+    // lit. Quantised so they fade in as steps rather than a smooth reveal.
+    const va = Variants.alphaFor(g);
+    ctx.globalAlpha = g.leaving ? 0.5 : U.quantise(va, 4) || va;
     ctx.drawImage(g.face < 0 ? Render.flipped(cv) : cv, x, y, size, size);
     ctx.globalAlpha = 1;
+
+    // The badge. Colour alone is not enough: several variant tints are close
+    // together at this size, and a colourblind player has nothing else to go
+    // on. Drawn as blocky pixels rather than text so it stays crisp.
+    const badge = Variants.cfg(g.variant).badge;
+    if (badge && va > 0.5) Render._badge(ctx, badge, g.x, y - 4);
 
     if (g.rootT > 0 || g.stunT > 0 || g.slowT > 0) {
       const mark = (g.stunT > 0) ? CFG.palette.rally

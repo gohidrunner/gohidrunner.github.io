@@ -314,6 +314,61 @@ const CFG = {
     luckToolBonus: 0.35,
   },
 
+  /* ----------------------------------------------------------- characters
+   * Character aydins. Rare, named, and each with one passive ability -- the
+   * point is to give the player something SPECIFIC to protect instead of one
+   * anonymous blob, so losing one has to hurt.
+   *
+   * Abilities scale by CFG.tools.shepherds.charBoost when Shepherd's Mark is
+   * owned; that multiplier is applied in js/characters.js, not baked in here.
+   * --------------------------------------------------------------------- */
+  characters: {
+    interval:     35,     // seconds between arrivals
+    intervalMin:  22,     // floor as the run goes on
+    rampTime:    300,
+    spawnDist:   340,     // arrives this far from the commander
+    invuln:        2.5,   // longer than a normal recruit; it arrives announced
+
+    shield:    { blocks: 1 },
+    medic:     { chance: 0.35 },
+    trickster: { every: 8, pull: 700, duration: 4 },
+    bard:      { radius: 300, speed: 0.18 },
+    banner:    { cohesionCut: 0.25 },
+    scout:     { magnet: 3 },
+    trapper:   { every: 0.35, radius: 46, slow: 0.45, duration: 2, life: 6 },
+    warden:    { every: 20 },
+    hound:     { strayDist: 400, push: 260 },
+    elder:     { exp: 0.40 },
+  },
+
+  /* ------------------------------------------------------------- variants
+   * Gohid variants, unlocked by elapsed run time so the threat keeps changing.
+   * `weight` is the relative chance of being picked once unlocked.
+   *
+   * Every variant is the SAME sprite with a tint and a badge -- no new art.
+   * --------------------------------------------------------------------- */
+  variants: {
+    // Unlock times in seconds. The baseline is always available.
+    gohid:   { after:   0, weight: 10, tint: '#e0435a', tintAmt: 0.62, badge: '',
+               speedMul: 1.00, sizeMul: 1.00 },
+    runner:  { after:  60, weight:  6, tint: '#ff7a4a', tintAmt: 0.60, badge: '>',
+               speedMul: 1.32, sizeMul: 0.88, grabRadius: 16 },
+    brute:   { after: 110, weight:  3, tint: '#8f1f34', tintAmt: 0.66, badge: '#',
+               speedMul: 0.72, sizeMul: 1.45, grabCount: 2 },
+    howler:  { after: 150, weight:  3, tint: '#b96ad6', tintAmt: 0.58, badge: '~',
+               speedMul: 0.92, sizeMul: 1.10, canGrab: false,
+               every: 6, radius: 500 },
+    herder:  { after: 200, weight:  3, tint: '#d69a4a', tintAmt: 0.58, badge: '<',
+               speedMul: 1.05, sizeMul: 1.05, canGrab: false,
+               push: 300, radius: 260 },
+    stalker: { after: 240, weight:  4, tint: '#6f7fa8', tintAmt: 0.55, badge: '.',
+               speedMul: 1.18, sizeMul: 0.95, revealAt: 250, hiddenAlpha: 0.30 },
+    hunter:  { after: 300, weight:  2, tint: '#ff3b6b', tintAmt: 0.70, badge: '!',
+               speedMul: 1.12, sizeMul: 1.00 },
+    splitter:{ after: 360, weight:  2, tint: '#7ee081', tintAmt: 0.55, badge: '+',
+               speedMul: 0.95, sizeMul: 1.15, splitInto: 'runner', splitCount: 2 },
+  },
+
   /* --------------------------------------------------------------- minimap */
   minimap: {
     size:       148,     // css px, square

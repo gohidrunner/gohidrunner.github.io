@@ -43,6 +43,7 @@ const Main = {
     Main.resize(true);
     Save.load();
     Upgrades.init();          // build the id index before anything resets
+    Characters.init();
     Audio2.enabled = Save.settings.sfx;
     Audio2.volume = Save.settings.volume;
     Game.init();
@@ -175,6 +176,8 @@ Main._checkDeath = function () {
   set('res-created', s.created);
   set('res-banished', s.banished);
   set('res-level', s.level || 1);
+  // Named aydins brought home, out of those that ever arrived.
+  set('res-chars', (s.charactersSeen - s.charactersLost) + ' / ' + s.charactersSeen);
   set('res-time', U.formatTime(s.time));
   set('res-best', U.formatNum(s.best));
   const nb = document.getElementById('res-new');

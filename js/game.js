@@ -30,6 +30,7 @@ const Game = {
   // than teaching the UI a new shape.
   tools: [],
   characters: [],
+  frame: 0,                  // frame counter, used for per-frame aura stamps
   effects: [],
   pickups: [],
   chests: [],
@@ -117,11 +118,14 @@ const Game = {
     Game.secondWindUsed = false;
     Upgrades.reset();
     Tools.reset();
+    Characters.reset();
     Game.tools = Tools.active;
+    Game.characters = Characters.active;
 
     Game.stats = {
       peakHerd: 0, lost: 0, created: 0, banished: 0,
       scatters: 0, time: 0, score: 0, level: 1,
+      charactersSeen: 0, charactersLost: 0, recovered: 0,
     };
 
     // Starting herd, ringed around the commander so the first second reads as
@@ -174,6 +178,7 @@ const Game = {
     }
 
     Game.time += dt;
+    Game.frame++;
     if (Game.stampedeT > 0) Game.stampedeT -= dt;
     Game._updateRally(dt);
 
@@ -187,6 +192,10 @@ const Game = {
       const g = Game.gohids[i];
       if (g.alive && !g.leaving) Game.gohidGrid.insert(g);
     }
+
+    // Characters query the grids and stamp the herd, so they run after the
+    // grids are rebuilt and before anything moves.
+    if (!attract) Characters.update(dt);
 
     // --- move -------------------------------------------------------------
     Game.commander.update(dt, Game);
@@ -211,7 +220,8 @@ const Game = {
     const herd = Game.aydins.length;
     if (!attract) {
       Game.score += herd * CFG.score.perAydinPerSecond * Game.mods.scoreMul * dt;
-      Game.exp += herd * CFG.exp.perAydinPerSecond * Game.mods.expMul * dt;
+      Game.exp += herd * CFG.exp.perAydinPerSecond * Game.mods.expMul
+                * Characters.expMul() * dt;
       if (herd > Game.stats.peakHerd) Game.stats.peakHerd = herd;
 
       // while(), not if(): a huge herd can cross more than one level in a frame.
@@ -330,7 +340,7 @@ const Game = {
     const piper = Tools.cohesionRadiusMul();
     const target = (Game.rallying
       ? F.cohesionRadiusRally * (b ? b.rallyRadiusMul : 1)
-      : F.cohesionRadius) * piper;
+      : F.cohesionRadius) * piper * Characters.cohesionMul();
     Game.cohesionRadius = U.damp(Game.cohesionRadius, target,
                                  1 / CFG.rally.snapTime, dt);
 
@@ -356,17 +366,19 @@ const Game = {
   /* THE core loop. An aydin caught here is removed from the score AND queued
    * as a new hunter, at the exact spot the player lost it. */
   _resolveCaptures(dt) {
-    const G = CFG.gohid;
     const out = [];
     for (let i = 0; i < Game.gohids.length; i++) {
       const g = Game.gohids[i];
       if (!g.alive || g.leaving || g.grabCd > 0) continue;
+      if (!g.canGrab) continue;              // howlers and herders never grab
 
-      const cand = Game.aydinGrid.query(g.x, g.y, G.grabRadius, out);
+      const reach = g.grabRadius;
+      const cand = Game.aydinGrid.query(g.x, g.y, reach, out);
+      let grabbed = 0;
       for (let j = 0; j < cand.length; j++) {
         const a = cand[j];
         if (!a.alive || a.invuln > 0) continue;
-        if (U.dist2(g.x, g.y, a.x, a.y) > G.grabRadius * G.grabRadius) continue;
+        if (U.dist2(g.x, g.y, a.x, a.y) > reach * reach) continue;
         // Cheapest check first: a flat dice roll, then a positional test,
         // then the escort scan.
         if (Game.buffs && Game.buffs.missChance > 0
@@ -391,8 +403,17 @@ const Game = {
           });
           break;
         }
+        // The Shield blocks one capture anywhere in the herd, not just its own.
+        if (Characters.consumeShield()) {
+          g.grabCd = CFG.gohid.grabCooldown;
+          Particles.burst(a.x, a.y, 12, {
+            speed: 150, life: 0.4, size: 3, colour: '#8ab6ff',
+          });
+          break;
+        }
         Game._capture(a, g);
-        break;                       // one grab per gohid per cooldown
+        // A brute takes two before its cooldown starts.
+        if (++grabbed >= g.grabCount) break;
       }
     }
   },
@@ -446,6 +467,9 @@ const Game = {
     if (Game.buffs && Game.buffs.stampede > 0) {
       Game.stampedeT = CFG.upgrades.stampede.duration;
     }
+
+    // The medic may pull one back before the loss lands.
+    if (Characters.tryRecover(aydin.x, aydin.y)) Game.stats.recovered++;
 
     // The consequence: a new hunter, born where you lost one.
     Game.queueGohid(aydin.x, aydin.y);
@@ -515,7 +539,9 @@ const Game = {
       const p = Game.pending[i];
       p.t += dt;
       if (p.t >= CFG.gohid.spawnTelegraph) {
-        Game.gohids.push(new Gohid(p.x, p.y));
+        const born = new Gohid(p.x, p.y);
+        Variants.apply(born, Variants.roll());
+        Game.gohids.push(born);
         Game.stats.created++;
         Game.shake = Math.max(Game.shake, CFG.fx.shake.gohidSpawn);
         Particles.burst(p.x, p.y, 16, {
@@ -529,8 +555,22 @@ const Game = {
   spawnAmbientGohid() {
     const c = Game.commander;
     const p = U.edgePointNear(c.x, c.y, 900, 1500);
-    Game.gohids.push(new Gohid(p.x, p.y));
+    const g = new Gohid(p.x, p.y);
+    Variants.apply(g, Variants.roll());
+    Game.gohids.push(g);
     Game.stats.created++;
+  },
+
+  /* Remove a gohid for good. Everything that banishes one goes through here,
+   * so the splitter's parting gift cannot be forgotten by a new caller. */
+  banishGohid(g) {
+    if (!g || !g.alive || g.leaving) return;
+    g.beginLeaving();
+    Audio2.banish();
+    Particles.burst(g.x, g.y, 12, {
+      speed: 140, life: 0.45, size: 3, colour: '#cfd6b8',
+    });
+    if (typeof Variants !== 'undefined') Variants.onBanish(g);
   },
 
   _updateSpawning(dt) {

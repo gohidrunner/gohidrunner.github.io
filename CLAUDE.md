@@ -7,8 +7,8 @@ every aydin caught becomes another gohid. The herd is the score and the bomb.
 **No build step.** `index.html` opens straight off the disk — plain
 `<script src>` tags, no bundler, no npm.
 
-Current state: **core loop, UI pass, and levelling/passives/tools are done.**
-Character aydins, gohid variants, events, pickups, chests, arenas and
+Current state: **core loop, UI pass, levelling/passives/tools, and character
+aydins + gohid variants are done.** Events, pickups, chests, arenas and
 achievements are not built yet — the UI has their shells.
 
 ---
@@ -59,6 +59,8 @@ Scripts are plain classic scripts sharing one global scope. Order in
 | `js/entities.js` | `Commander`, `Aydin`, `Gohid` | all of the above |
 | `js/upgrades.js` | The shared passive+tool level map, buffs, evolutions | entities |
 | `js/tools.js` | Auto-firing tools, world zones, escorts | upgrades |
+| `js/variants.js` | Gohid kinds: data plus one behaviour switch | entities |
+| `js/characters.js` | The named aydins and their abilities | entities, tools |
 | `js/game.js` | World state, update order, capture, spawning, exp | entities, grid |
 | `js/render.js` | Camera, zoom, culled floor, depth-sorted sprites | game, sprites |
 | `js/minimap.js` | Its own canvas on its own clock | game, render |
@@ -125,6 +127,27 @@ each wrote a delta into the live value they could not be removed
 independently, and an event that ended would leave its multiplier behind
 forever. Rebuilding is O(upgrades taken), runs once per level-up, and cannot
 drift — there is a test for its idempotence.
+
+**Character abilities PULL, they do not push.** Nothing in `characters.js`
+reaches into the game loop to change a number. Each ability either runs on its
+own timer or exposes a query the relevant system calls at its own point of use
+— `cohesionMul()`, `expMul()`, `consumeShield()`, `tryRecover()`. That keeps a
+character's effect removable the instant it dies with no state to unwind, which
+is the same problem the buffs bag solves for upgrades.
+
+**A character aydin is an ordinary `Aydin` with a `character` field.** It
+flocks, panics and dies exactly like the rest of the herd — that is the point.
+The player protects something specific that behaves just like the crowd it is
+hiding in. It gets a tint, a badge and a HUD portrait, nothing else.
+
+**A gohid variant is DATA plus at most one case in `Variants.behave()`.** Same
+sprite, runtime tint, badge glyph. Badges are not decoration: at 44px several
+of the variant tints sit close together, and a colourblind player has nothing
+else to distinguish a runner from a herder.
+
+**Everything that removes a gohid goes through `Game.banishGohid()`,** so the
+splitter's parting gift cannot be forgotten by a future caller. The Warden and
+Honour Guard both route through it.
 
 **Status effects refresh, they do not stack.** An aura calls `applySlow` every
 frame it contains a gohid; adding durations would leave anything that walked
@@ -223,6 +246,14 @@ Recruit rate is the dominant lever in the whole economy, so a percentage buff
 to it is worth far more than the same percentage anywhere else: at
 `perLevel 0.14` it measured **+62%** against a field where the next best was
 +22%. Reduced to 0.055, which lands it at +23.5%.
+
+**Character aydins die about half the time, and the Hunter is not why.**
+Measured over 3 runs of 4 minutes with the scripted player: **58%** of
+characters lost with hunters enabled, **50%** with them disabled — the variant
+that exists specifically to kill them contributes only 8 percentage points.
+They mostly die because they are ordinary aydins in a dangerous crowd, which is
+the intent. Worth re-checking if the loss rate ever looks wrong: the instinct
+is to blame the Hunter, and the instinct is wrong.
 
 ### Measuring an upgrade's worth
 
@@ -342,7 +373,8 @@ visibly lose ground.
 3. ~~Levelling, passives, tools~~ **done** — 18 passives, 15 tools, 5
    evolutions, all numbers in config. Measured net-positive: the same scripted
    player scores 13,948 with upgrades against 9,367 without, at half the losses
-4. Character aydins and gohid variants
+4. ~~Character aydins and gohid variants~~ **done** — 10 characters with one
+   ability each, 8 variants unlocked by run time, all from the same sprite
 5. Chests, pickups, events, arenas, modifiers
 6. Achievements, collection, results — *results done; Collection now lists
    owned passives and tools with their levels; trophies still a shell*
