@@ -403,28 +403,53 @@ const Render = {
     if (Input.stick.active) Render._drawStick(ctx);
   },
 
-  /* Darkness outside a radius around the commander. Drawn in screen space
-   * with destination-out on a filled overlay, which is one composite rather
-   * than a per-pixel mask. */
-  _drawVision(ctx, w, h, radius) {
-    const z = Render.zoom;
-    const cx = w / 2, cy = h / 2;
-    const r = radius * z;
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(6,5,10,0.90)';
-    // Four rects plus a punched hole: fill everything, then cut the circle.
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'destination-out';
-    // Stepped rings give a hard pixel edge instead of a smooth vignette.
-    for (let i = 0; i < 4; i++) {
-      ctx.globalAlpha = 1 - i * 0.22;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * (1 - i * 0.06), 0, Math.PI * 2);
-      ctx.fill();
+  /* Darkness outside a radius around the commander.
+   *
+   * Built on an OFFSCREEN canvas and then drawn over the scene. The obvious
+   * version -- fill the main canvas dark, then punch the hole with
+   * destination-out -- does not work: a 2D canvas has no layers, so
+   * destination-out erases the GAME as well as the overlay, and the hole comes
+   * out blacker than the surround. That is exactly what it did, and it went
+   * unnoticed because vision is only used by one arena and one 1-in-6 run
+   * modifier.
+   *
+   * The mask only changes when the viewport or the radius changes, so it is
+   * cached and the per-frame cost is a single drawImage. */
+  _visionMask(w, h, radius) {
+    if (Render._visCanvas && Render._visW === w && Render._visH === h
+        && Render._visR === radius) {
+      return Render._visCanvas;
     }
-    ctx.restore();
-    ctx.globalAlpha = 1;
+    const cv = Render._visCanvas || document.createElement('canvas');
+    cv.width = w;
+    cv.height = h;
+    const g = cv.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = 'rgba(6,5,10,0.92)';
+    g.fillRect(0, 0, w, h);
+
+    // Punch the hole. Safe here: this canvas holds nothing but the overlay.
+    // Stepped rings give a hard pixel edge rather than a smooth vignette.
+    g.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 5; i++) {
+      g.globalAlpha = 0.30 + i * 0.18;
+      g.beginPath();
+      g.arc(w / 2, h / 2, radius * (1 - i * 0.055), 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+
+    Render._visCanvas = cv;
+    Render._visW = w; Render._visH = h; Render._visR = radius;
+    return cv;
+  },
+
+  _drawVision(ctx, w, h, radius) {
+    // Radius is in world units; the mask is in screen pixels.
+    const r = Math.round(radius * Render.zoom);
+    ctx.drawImage(Render._visionMask(Math.round(w), Math.round(h), r), 0, 0);
   },
 
   /* The floating stick is drawn where the thumb actually landed. */

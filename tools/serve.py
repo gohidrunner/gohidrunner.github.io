@@ -17,7 +17,6 @@ file. Serves the project root regardless of the shell's working directory.
 import functools
 import http.server
 import os
-import socketserver
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -38,9 +37,19 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
-class ReusableServer(socketserver.TCPServer):
-    # Without this a restart within the TIME_WAIT window fails to bind.
+class ReusableServer(http.server.ThreadingHTTPServer):
+    """THREADING IS NOT OPTIONAL HERE.
+
+    A single-threaded server handles one request at a time, and the game's
+    <audio> elements hold long-lived connections while they stream several
+    megabytes of music. Those requests then block every other request --
+    scripts, sprites, the font -- and the page simply hangs half-loaded. It
+    looks exactly like a dead port.
+
+    Daemon threads so Ctrl-C does not wait on an in-flight media stream.
+    """
     allow_reuse_address = True
+    daemon_threads = True
 
 
 def main():
