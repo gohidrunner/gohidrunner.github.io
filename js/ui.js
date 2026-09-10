@@ -454,7 +454,10 @@ const UI = {
       return out;
     }
     if (tab === 'passives' || tab === 'tools') {
-      const owned = Game.upgrades ? Game.upgrades.owned(tab) : [];
+      // Upgrades is the registry; there is no Game.upgrades. This read the
+      // wrong object and so the Collection screen always said "Nothing yet",
+      // even mid-run with three tools equipped.
+      const owned = (typeof Upgrades !== 'undefined') ? Upgrades.owned(tab) : [];
       return owned.map((u) => ({
         name: u.name, desc: u.desc, meta: 'LV ' + u.level + '/' + u.maxLevel,
       }));

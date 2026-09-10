@@ -580,6 +580,20 @@ console.log('\n-- upgrades ------------------------------------------------');
         'sinceCatch ' + watched.sinceCatch.toFixed(1) + 's');
 }
 
+{
+  // The Collection screen reads this. It used to read a Game.upgrades that
+  // never existed, so it silently showed "Nothing yet" all run.
+  newRun();
+  Upgrades.take('smokeBomb');
+  Upgrades.take('boots');
+  const tools = Upgrades.owned('tools');
+  const passives = Upgrades.owned('passives');
+  check('the collection lists owned tools and passives separately',
+        tools.length === 1 && passives.length === 1
+        && tools[0].level === 1 && passives[0].maxLevel === 5,
+        tools.length + ' tools, ' + passives.length + ' passives');
+}
+
 console.log('\n-- the spiral ----------------------------------------------');
 
 newRun();
