@@ -33,10 +33,13 @@ const Minimap = {
 
   resize() {
     if (!Minimap.canvas) return;
-    // At the full 148px the minimap covered 40% of a 375px-wide phone and
-    // crowded the rally control off the bottom bar.
-    const cssSize = (window.innerWidth <= 560)
-      ? CFG.minimap.sizeMobile : CFG.minimap.size;
+    // Sized off the SMALLER viewport dimension, not the width. A width-only
+    // breakpoint gave a landscape phone (812x375) the full desktop minimap,
+    // which then ate 43% of the screen height. Capping against min(w,h)
+    // handles portrait, landscape and desktop with one rule.
+    const shortest = Math.min(window.innerWidth, window.innerHeight);
+    const cssSize = U.clamp(Math.round(shortest * CFG.minimap.shortestFrac),
+                            CFG.minimap.sizeMin, CFG.minimap.size);
     // The minimap is small and static, so it can afford full DPR for crisp
     // dots without the cost that made the main canvas cap its ratio.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);

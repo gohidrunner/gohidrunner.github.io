@@ -51,7 +51,7 @@
       </div>
 
       <div class="hud-right">
-        <button class="icon-btn" id="btn-pause" title="Pause">| |</button>
+        <button class="icon-btn" id="btn-pause" data-go="pause" title="Pause">| |</button>
         <div class="fps" id="hud-fps"></div>
       </div>
     </div>
@@ -73,6 +73,10 @@
   <!-- Bottom-right: one slot per equipped tool. Slots are created once and
        updated in place; see HUD.updateTools. -->
   <div class="hud-tools" id="hud-tools"></div>
+
+  <!-- Replaces the tool tray on a narrow screen; tool details live in the
+       Collection screen, which this opens. -->
+  <button class="icon-btn hud-menu-btn" data-screen="collection">TOOLS</button>
 
   <!-- Right edge: the character aydins currently alive. -->
   <div class="hud-chars" id="hud-chars"></div>

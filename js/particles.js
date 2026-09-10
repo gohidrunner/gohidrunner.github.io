@@ -15,6 +15,10 @@ const Particles = {
   pool: [],
   head: 0,
   live: 0,
+  // Performance mode drops most particles at the SPAWN site rather than
+  // shrinking the pool, so nothing has to be reallocated when it is toggled
+  // mid-run and every effect still fires, just thinner.
+  keep: 1,
 
   init() {
     const n = CFG.fx.maxParticles;
@@ -38,6 +42,7 @@ const Particles = {
   },
 
   spawn(x, y, opts) {
+    if (Particles.keep < 1 && Math.random() > Particles.keep) return null;
     const p = Particles._next();
     p.active = true;
     p.x = x; p.y = y;

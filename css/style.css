@@ -269,6 +269,17 @@ canvas { image-rendering: pixelated; }
 
 /* ------------------------------------------------------------------ tools */
 
+/* Stands in for the tool tray below 560px; hidden otherwise. */
+.hud-menu-btn {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: none;
+  font-size: 10px;
+  letter-spacing: 2px;
+  padding: 10px 12px;
+}
+
 .hud-tools {
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
@@ -307,6 +318,11 @@ canvas { image-rendering: pixelated; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Ten portraits at 40px overflow a phone in landscape, so the strip is
+   * bounded and wraps into columns rather than running off the screen. */
+  max-height: 70vh;
+  flex-wrap: wrap-reverse;
+  align-content: flex-end;
 }
 .char-portrait {
   position: relative;
@@ -694,6 +710,11 @@ h1, h2 { font-weight: 400; }
   .score { font-size: 20px; }
   .title { font-size: 24px; }
   .hud-tools { display: none; }
+  .hud-menu-btn { display: block; }
+  /* The rally control owns the bottom-right corner on touch, so the stand-in
+   * for the tray sits above it rather than underneath. */
+  .hud-menu-btn { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 104px); }
+  .char-portrait { width: 32px; height: 32px; }
   .hud-minimap { padding: 2px; }
   .banner { font-size: 16px; padding: 8px 12px; }
   .btn-grid { grid-template-columns: 1fr; }
@@ -709,6 +730,11 @@ h1, h2 { font-weight: 400; }
   }
   .hud-rally canvas { width: 76px; height: 76px; }
   .rally-label { font-size: 9px; }
+}
+
+@media (max-height: 520px) {
+  .hud-chars { max-height: 58vh; }
+  .char-portrait { width: 28px; height: 28px; border-width: 2px; }
 }
 
 @media (max-height: 460px) {

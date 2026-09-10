@@ -559,8 +559,9 @@ const CFG = {
 
   /* --------------------------------------------------------------- minimap */
   minimap: {
-    size:       148,     // css px, square
-    sizeMobile:  92,     // 148 swallowed 40% of a 375px-wide screen
+    size:       148,     // css px, square: the cap on large screens
+    sizeMin:     78,     // never so small the herd cloud is unreadable
+    shortestFrac: 0.26,  // of the SHORTER viewport dimension; see minimap.js
     dotHerd:      2,
     dotGohid:     3,
     dotCommander: 4,
@@ -583,6 +584,8 @@ const CFG = {
   /* ---------------------------------------------------------------- effects */
   fx: {
     maxParticles: 700,
+    // Performance mode keeps this fraction of particles and drops the rest.
+    perfParticleKeep: 0.35,
     shake: {
       capture: 5,
       gohidSpawn: 7,

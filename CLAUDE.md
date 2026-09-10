@@ -7,10 +7,11 @@ every aydin caught becomes another gohid. The herd is the score and the bomb.
 **No build step.** `index.html` opens straight off the disk — plain
 `<script src>` tags, no bundler, no npm.
 
-Current state: **everything through step 6 is done** — core loop, UI, music,
+Current state: **feature-complete and playable.** Core loop, UI, music,
 levelling/passives/tools, character aydins + gohid variants,
-events/pickups/chests/modifiers, and arenas + achievements + collection. Only
-the step 7 polish pass remains.
+events/pickups/chests/modifiers, arenas + achievements + collection, mobile,
+and GitHub Pages hosting. The step 7 cosmetic polish pass was dropped by
+request.
 
 ---
 
@@ -194,6 +195,18 @@ function. They are checked once a second, not per frame: twenty comparisons is
 cheap but it is pure waste sixty times a second for conditions that move at
 human speed.
 
+**Every settings toggle must actually reach something.** Four of them --
+screen shake, colourblind badges, performance mode and touch controls -- were
+saved to the profile and read by nothing at all, so the settings screen was a
+row of switches wired to air. `UI.applySettings()` is now the single place that
+pushes stored settings into the systems that act on them, and it is called at
+boot and after every change. If a setting is added, it goes there too.
+
+**The minimap is sized off the SHORTER viewport dimension.** A width-only
+breakpoint gave a landscape phone (812x375) the full desktop minimap, which ate
+43% of the screen height. One rule against `min(w, h)` covers portrait,
+landscape and desktop.
+
 **Status effects refresh, they do not stack.** An aura calls `applySlow` every
 frame it contains a gohid; adding durations would leave anything that walked
 through a dust cloud slowed for the rest of the run.
@@ -305,6 +318,20 @@ is to blame the Hunter, and the instinct is wrong.
 event system: in both cases something had cleared state without refolding, so
 the *baseline* the test captured was stale rather than the result being wrong.
 If a mods-related test ever flakes again, suspect the baseline first.
+
+**A canvas has no layers, so `destination-out` erases the scene.** The
+limited-vision overlay filled the screen dark and punched a hole with
+`destination-out`, which removed the GAME along with the overlay -- the hole
+came out blacker than its surround. Masks like this must be built on an
+offscreen canvas and drawn over the top. It shipped broken through two steps
+because vision is used by exactly one arena and one 1-in-6 run modifier, and
+neither had appeared in a screenshot.
+
+**A dev server for this game must be threaded.** The `<audio>` elements hold
+long-lived connections while streaming several megabytes of music, and a
+single-threaded server hands them its only worker; every other request then
+hangs and the page looks like a dead port. `tools/serve.py` uses
+`ThreadingHTTPServer`.
 
 ### Measuring an upgrade's worth
 
@@ -431,7 +458,10 @@ visibly lose ground.
 6. ~~Arenas, achievements, collection~~ **done** — 5 arenas unlocked by
    lifetime score, 20 trophies with hidden ones, Collection lists owned
    passives, tools, characters and live Active Effects
-7. Polish: audio, particles, banners, mobile
+7. ~~Polish~~ — cosmetic polish dropped by request. Mobile was done: floating
+   stick, rally in the bottom-right corner, a TOOLS button standing in for the
+   hidden tray, portrait/landscape layouts verified with no overlaps, and the
+   camera zooms out on small viewports so the herd is readable.
 
 `Game.mods` is the multiplier bag upgrades/modifiers/events write into, and
 `Game.characters/effects/pickups/chests` are declared empty so the UI can
@@ -444,7 +474,8 @@ fire switch in `js/tools.js`.
 
 ## Still untested
 
-- **A real phone.** Touch controls and the mobile viewport are written for and
-  verified only in an emulated 375x812 viewport, never on hardware.
+- **A real phone.** Touch is verified by dispatching real TouchEvents through
+  the true input path in emulated 375x812 and 812x375 viewports -- the floating
+  stick, steering and the rally zone all respond -- but never on hardware.
 - **Audio has never been listened to.** It is synthesised blind — every sound
   is plausible on paper and completely unverified by ear.

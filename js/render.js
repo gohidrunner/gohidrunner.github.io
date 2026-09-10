@@ -19,6 +19,9 @@ const Render = {
   view: { x0: 0, y0: 0, x1: 0, y1: 0 },
   camX: 0, camY: 0,
   w: 0, h: 0,               // css pixels
+  shakeEnabled: true,       // Settings > SCREEN SHAKE
+  badges: true,             // Settings > COLOURBLIND BADGES
+  perfMode: false,          // Settings > PERFORMANCE MODE
   zoom: 1,                  // <1 means zoomed out; see CFG.display.minVisibleWorld
   dpr: 1,                   // set by Main.resize; see the note in draw()
   _flip: new WeakMap(),
@@ -90,7 +93,7 @@ const Render = {
     const w = Render.w, h = Render.h;
 
     let sx = 0, sy = 0;
-    if (Game.shake > 0.1) {
+    if (Game.shake > 0.1 && Render.shakeEnabled) {
       // Quantised to whole pixels -- sub-pixel shake on pixel art just blurs.
       sx = Math.round(U.rand(-Game.shake, Game.shake));
       sy = Math.round(U.rand(-Game.shake, Game.shake));
@@ -154,7 +157,15 @@ const Render = {
     }
 
     // Decor from a positional hash, so it is stable across frames without
-    // storing anything: same tile, same tuft, every time.
+    // storing anything: same tile, same tuft, every time. Skipped in
+    // performance mode -- it is a second full pass over every visible tile.
+    if (Render.perfMode) {
+      ctx.strokeStyle = P.edge || CFG.palette.world.edge;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(0, 0, CFG.world.width, CFG.world.height);
+      if (typeof Arenas !== 'undefined') Arenas.drawWalls(ctx, v);
+      return;
+    }
     for (let ty = y0; ty < y1; ty++) {
       for (let tx = x0; tx < x1; tx++) {
         const hsh = ((tx * 73856093) ^ (ty * 19349663)) >>> 0;
@@ -244,6 +255,7 @@ const Render = {
   },
 
   _shadow(ctx, x, y, w) {
+    if (Render.perfMode) return;      // cheapest per-entity cost to drop
     ctx.fillStyle = CFG.palette.world.shadow;
     ctx.fillRect(Math.round(x - w / 2), Math.round(y - 2), Math.round(w), 4);
     ctx.globalAlpha = 1;
@@ -335,7 +347,7 @@ const Render = {
     // together at this size, and a colourblind player has nothing else to go
     // on. Drawn as blocky pixels rather than text so it stays crisp.
     const badge = Variants.cfg(g.variant).badge;
-    if (badge && va > 0.5) Render._badge(ctx, badge, g.x, y - 4);
+    if (Render.badges && badge && va > 0.5) Render._badge(ctx, badge, g.x, y - 4);
 
     if (g.rootT > 0 || g.stunT > 0 || g.slowT > 0) {
       const mark = (g.stunT > 0) ? CFG.palette.rally

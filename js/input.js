@@ -22,6 +22,7 @@ const Input = {
 
   keys: Object.create(null),
   touchEnabled: false,
+  touchMode: 'auto',        // Settings > TOUCH CONTROLS: auto | on | off
 
   stick: {
     active: false, id: null,
@@ -57,6 +58,10 @@ const Input = {
   _gesture() {
     if (Input._onFirstGesture) { Input._onFirstGesture(); Input._onFirstGesture = null; }
   },
+
+  /* Whether touch may steer. "off" exists for hybrid laptops, where a stray
+   * palm on the screen otherwise fights the keyboard. */
+  _touchActive() { return Input.touchMode !== 'off'; },
 
   /* ---------------------------------------------------------- keyboard */
 
@@ -121,6 +126,7 @@ const Input = {
 
   _touchStart(e) {
     Input._gesture();
+    if (!Input._touchActive()) return;
     e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
@@ -140,6 +146,7 @@ const Input = {
   },
 
   _touchMove(e) {
+    if (!Input._touchActive()) return;
     e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
@@ -151,6 +158,7 @@ const Input = {
   },
 
   _touchEnd(e) {
+    if (!Input._touchActive()) return;
     e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];

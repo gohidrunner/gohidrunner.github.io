@@ -58,6 +58,7 @@ const UI = {
       else if (UI.current === 'pause') UI.hide();
     });
 
+    UI.applySettings();
     UI._buildSettings();
     UI._buildArenas();
     UI._buildAchievements();
@@ -92,6 +93,8 @@ const UI = {
       Game.start();
       UI.hide();
       Music.play('run');
+    } else if (verb === 'pause') {
+      if (Game.state === 'playing') UI.show('pause');
     } else if (verb === 'resume') {
       UI.hide();
     } else if (verb === 'menu' || verb === 'quit') {
@@ -242,6 +245,22 @@ const UI = {
     }
   },
 
+  /* Push the stored settings into the systems that act on them. Called at boot
+   * and after every toggle. Without it the settings screen is a row of
+   * switches wired to nothing, which is exactly what it was: shake,
+   * colourblind badges, performance mode and touch were all saved and never
+   * read by anything. */
+  applySettings() {
+    const s = Save.settings;
+    Audio2.enabled = s.sfx;
+    Audio2.setVolume(s.volume);
+    Render.shakeEnabled = s.shake !== false;
+    Render.badges = s.colourblind !== false;
+    Render.perfMode = !!s.performance;
+    Particles.keep = s.performance ? CFG.fx.perfParticleKeep : 1;
+    Input.touchMode = s.touch || 'auto';
+  },
+
   /* ------------------------------------------------------------- settings */
 
   _buildSettings() {
@@ -275,6 +294,7 @@ const UI = {
         Save.setSetting(key, !Save.settings[key]);
         b.className = 'toggle' + (Save.settings[key] ? ' on' : '');
         b.textContent = Save.settings[key] ? 'ON' : 'OFF';
+        UI.applySettings();
         if (onChange) onChange(Save.settings[key]);
       });
       return b;
@@ -317,6 +337,21 @@ const UI = {
     row('MUSIC VOLUME', null, mvol);
 
     row('SCREEN SHAKE', 'Turn off if it makes you queasy.', toggle('shake'));
+
+    const touchBtn = document.createElement('button');
+    const touchLabel = () => (Save.settings.touch || 'auto').toUpperCase();
+    touchBtn.className = 'toggle' + (Save.settings.touch === 'off' ? '' : ' on');
+    touchBtn.textContent = touchLabel();
+    touchBtn.addEventListener('click', () => {
+      const order = ['auto', 'on', 'off'];
+      const next = order[(order.indexOf(Save.settings.touch || 'auto') + 1) % 3];
+      Save.setSetting('touch', next);
+      touchBtn.textContent = touchLabel();
+      touchBtn.className = 'toggle' + (next === 'off' ? '' : ' on');
+      UI.applySettings();
+    });
+    row('TOUCH CONTROLS', 'Auto follows the device. Off ignores touch entirely.',
+        touchBtn);
     row('COLOURBLIND BADGES', 'Marks each variant with a symbol as well as a colour.',
         toggle('colourblind'));
     row('PERFORMANCE MODE', 'Thins particles and caps herd render detail.',

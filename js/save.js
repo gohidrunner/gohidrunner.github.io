@@ -29,7 +29,10 @@ const Save = {
         musicVolume: CFG.music.volume,
         shake: true,
         touch: 'auto',       // auto | on | off
-        colourblind: false,
+        // Default ON: the badges are the only thing separating several
+        // variant tints that sit close together, so the accessible option is
+        // the one that ships.
+        colourblind: true,
         performance: false,
       },
     };
