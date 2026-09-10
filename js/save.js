@@ -24,6 +24,8 @@ const Save = {
       settings: {
         sfx: true,
         volume: CFG.audio.volume,
+        music: CFG.music.enabled,
+        musicVolume: CFG.music.volume,
         shake: true,
         touch: 'auto',       // auto | on | off
         colourblind: false,

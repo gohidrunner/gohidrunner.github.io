@@ -413,6 +413,40 @@ const CFG = {
     volume: 0.5,
   },
 
+  /* ------------------------------------------------------------------ music
+   * Songs are FILES, not base64. Sprites and the font are inlined so a
+   * file:// page can read their pixels; music only needs to be played, and an
+   * <audio> element plays a local file happily. Inlining 5MB of audio would
+   * also mean parsing 6.7MB of base64 before the first frame.
+   *
+   * `src` lists candidates in preference order and the first that loads wins.
+   * welcome-to-the-game is Opus in an MP4 container, which this browser plays
+   * but Firefox and Safari may not, so a lossless Ogg remux sits in front of
+   * it. Nothing is re-encoded; both files are the original audio.
+   *
+   * For Safari an AAC version would be needed:
+   *   ffmpeg -i welcome-to-the-game.m4a -c:a aac -b:a 192k out.m4a
+   * -------------------------------------------------------------------- */
+  music: {
+    enabled: true,
+    volume: 0.45,
+    fade: 1.4,           // seconds to cross between tracks
+    duckWhilePaused: 0.4, // multiplier while a pausing screen is open
+    duckFade: 0.3,       // ducking is quick; a 1.4s dip on every level-up drags
+
+    tracks: {
+      menu: {
+        title: 'Welcome to the Game',
+        src: ['assets/music/welcome-to-the-game.ogg',
+              'assets/music/welcome-to-the-game.m4a'],
+      },
+      run: {
+        title: 'Welcome to the 2nd Game',
+        src: ['assets/music/welcome-to-the-2nd-game.mp3'],
+      },
+    },
+  },
+
   /* ---------------------------------------------------------------- palette
    * These MUST stay in step with the CSS custom properties in css/style.css.
    * The canvas cannot read CSS variables, so the handful of colours needed for

@@ -83,6 +83,7 @@ const UI = {
 
   _verb(verb) {
     Audio2.resume();
+    Music.unlock();
     if (verb === 'play') {
       // Order matters: UI.hide() decides HUD visibility from Game.state, so
       // the run has to be started BEFORE hiding, or the HUD stays hidden for
@@ -90,14 +91,13 @@ const UI = {
       HUD.reset();
       Game.start();
       UI.hide();
+      Music.play('run');
     } else if (verb === 'resume') {
       UI.hide();
-    } else if (verb === 'menu') {
+    } else if (verb === 'menu' || verb === 'quit') {
       UI.show('menu');
       Game.attract();
-    } else if (verb === 'quit') {
-      UI.show('menu');
-      Game.attract();
+      Music.play('menu');
     }
   },
 
@@ -294,6 +294,27 @@ const UI = {
       Audio2.setVolume(v);
     });
     row('VOLUME', null, vol);
+
+    const musicBtn = document.createElement('button');
+    musicBtn.className = 'toggle' + (Music.enabled ? ' on' : '');
+    musicBtn.textContent = Music.enabled ? 'ON' : 'OFF';
+    musicBtn.addEventListener('click', () => {
+      Music.setEnabled(!Music.enabled);
+      musicBtn.className = 'toggle' + (Music.enabled ? ' on' : '');
+      musicBtn.textContent = Music.enabled ? 'ON' : 'OFF';
+    });
+    row('MUSIC', Music.nowPlaying() || 'Two tracks: menu and run.', musicBtn);
+
+    const mvol = document.createElement('input');
+    mvol.type = 'range';
+    mvol.className = 'slider';
+    mvol.min = 0; mvol.max = 100; mvol.step = 5;
+    mvol.value = Math.round(Music.volume * 100);
+    mvol.addEventListener('input', () => {
+      Music.setVolume(Number(mvol.value) / 100);
+      Music.applyVolumeNow();
+    });
+    row('MUSIC VOLUME', null, mvol);
 
     row('SCREEN SHAKE', 'Turn off if it makes you queasy.', toggle('shake'));
     row('COLOURBLIND BADGES', 'Marks each variant with a symbol as well as a colour.',

@@ -42,6 +42,7 @@ const Main = {
 
     Main.resize(true);
     Save.load();
+    Music.init();
     Upgrades.init();          // build the id index before anything resets
     Characters.init();
     Audio2.enabled = Save.settings.sfx;
@@ -51,11 +52,12 @@ const Main = {
     Minimap.init();
     HUD.init();
     UI.init();
-    Input.init(Main.canvas, () => Audio2.resume());
+    Input.init(Main.canvas, () => { Audio2.resume(); Music.unlock(); });
 
     Sprites.load(() => {
       UI.show('menu');
       Game.attract();
+      Music.play('menu');
       Main.last = performance.now();
       Main.raf = requestAnimationFrame(Main.frame);
     });
@@ -151,6 +153,8 @@ const Main = {
         Minimap.update(dt);
       }
       UI.updateBanners(dt);
+      Music.duck(UI.paused || Game.state !== 'playing');
+      Music.update(dt);
       Main._checkDeath();
 
     } catch (err) {

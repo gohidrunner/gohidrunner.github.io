@@ -2,3 +2,8 @@
 * text=auto eol=lf
 *.png binary
 *.woff2 binary
+
+# Audio assets are binary
+*.mp3 binary
+*.m4a binary
+*.ogg binary
