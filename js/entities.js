@@ -53,6 +53,16 @@ class Commander {
     this.kx *= decay;
     this.ky *= decay;
 
+    // Frozen Lake: the commander accelerates toward the input instead of
+    // simply being set to it, so stopping and turning both take distance.
+    const slide = (typeof Arenas !== 'undefined') ? Arenas.slide() : 0;
+    if (slide > 0) {
+      this.sx = U.damp(this.sx || 0, this.vx, slide, dt);
+      this.sy = U.damp(this.sy || 0, this.vy, slide, dt);
+      this.vx = this.sx;
+      this.vy = this.sy;
+    }
+
     this.x += (this.vx + this.kx) * dt;
     this.y += (this.vy + this.ky) * dt;
 

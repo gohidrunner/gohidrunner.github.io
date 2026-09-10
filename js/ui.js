@@ -329,15 +329,11 @@ const UI = {
     const host = UI.el.arenaList;
     if (!host) return;
     host.textContent = '';
-    const arenas = (typeof Arenas !== 'undefined') ? Arenas.list : [{
-      id: 'steppe', name: 'OPEN STEPPE', unlock: 0,
-      mod: 'No modifier. Open ground in every direction.',
-      swatch: CFG.palette.steppeFloorA,
-    }];
+    const arenas = Arenas.list;
 
     for (let i = 0; i < arenas.length; i++) {
       const a = arenas[i];
-      const unlocked = Save.data.lifetime >= a.unlock;
+      const unlocked = Arenas.unlocked(a);
       const card = document.createElement('div');
       card.className = 'arena-card' + (unlocked ? '' : ' locked')
                      + (Save.data.arena === a.id ? ' selected' : '');
@@ -345,7 +341,8 @@ const UI = {
 
       const sw = document.createElement('div');
       sw.className = 'arena-swatch';
-      sw.style.background = a.swatch || CFG.palette.panelLt;
+      sw.style.background = a.floorA || CFG.palette.panelLt;
+      sw.style.borderColor = a.edge || CFG.palette.border;
       card.appendChild(sw);
 
       const info = document.createElement('div');
@@ -379,6 +376,7 @@ const UI = {
 
   _pickArena(id) {
     Save.set('arena', id);
+    Arenas.select(id);
     UI._buildArenas();
   },
 
@@ -388,7 +386,7 @@ const UI = {
     const host = UI.el.achGrid;
     if (!host) return;
     host.textContent = '';
-    const list = (typeof Achievements !== 'undefined') ? Achievements.list : [];
+    const list = Achievements.list;
     if (!list.length) {
       host.innerHTML = '';
       const note = document.createElement('div');

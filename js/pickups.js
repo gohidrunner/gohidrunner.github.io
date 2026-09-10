@@ -237,6 +237,7 @@ const Pickups = {
     }
     for (let i = 0; i < cards.length; i++) Upgrades.take(cards[i].id);
     Game.stats.chests++;
+    if (tier.id === 'legendary') Game.stats.legendaryChests++;
     Audio2.chest();
     UI.showChest(tier, cards);
   },

@@ -139,7 +139,8 @@ const Render = {
    * that is ~2900 tiles, of which maybe 250 are ever visible. */
   _drawFloor(ctx, v) {
     const T = CFG.world.tile;
-    const P = CFG.palette;
+    // The arena owns the floor palette, so switching maps is a data change.
+    const P = (typeof Arenas !== 'undefined') ? Arenas.palette() : CFG.palette;
     const x0 = Math.max(0, Math.floor(v.x0 / T));
     const x1 = Math.min(Math.ceil(CFG.world.width / T), Math.ceil(v.x1 / T));
     const y0 = Math.max(0, Math.floor(v.y0 / T));
@@ -147,7 +148,7 @@ const Render = {
 
     for (let ty = y0; ty < y1; ty++) {
       for (let tx = x0; tx < x1; tx++) {
-        ctx.fillStyle = ((tx + ty) & 1) ? P.steppeFloorA : P.steppeFloorB;
+        ctx.fillStyle = ((tx + ty) & 1) ? P.floorA : P.floorB;
         ctx.fillRect(tx * T, ty * T, T, T);
       }
     }
@@ -160,7 +161,7 @@ const Render = {
         if ((hsh & 7) > 2) continue;
         const px = tx * T + (hsh >> 3 & 31) + 8;
         const py = ty * T + (hsh >> 8 & 31) + 8;
-        ctx.fillStyle = (hsh & 1) ? P.steppeDecor : P.steppeDecor2;
+        ctx.fillStyle = (hsh & 1) ? P.decor : P.decor2;
         const s = 3 + (hsh >> 13 & 1) * 2;
         ctx.fillRect(px, py, s, s);
         ctx.fillRect(px + s, py - 2, 2, 2);
@@ -168,9 +169,11 @@ const Render = {
     }
 
     // World bounds, so the edge of the map is legible before you hit it.
-    ctx.strokeStyle = CFG.palette.world.edge;
+    ctx.strokeStyle = P.edge || CFG.palette.world.edge;
     ctx.lineWidth = 6;
     ctx.strokeRect(0, 0, CFG.world.width, CFG.world.height);
+
+    if (typeof Arenas !== 'undefined') Arenas.drawWalls(ctx, v);
   },
 
   /* The 1.5s warning before a captured aydin becomes a hunter. */

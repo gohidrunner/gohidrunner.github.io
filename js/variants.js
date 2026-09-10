@@ -27,16 +27,19 @@ const Variants = {
     for (const id in CFG.variants) {
       const v = CFG.variants[id];
       if (t < v.after) continue;
-      pool.push(id);
-      total += v.weight;
+      // The arena can tilt the mix -- Night Forest wants more stalkers.
+      const w = (typeof Arenas !== 'undefined')
+        ? Arenas.variantWeight(id, v.weight) : v.weight;
+      pool.push({ id: id, w: w });
+      total += w;
     }
     if (!pool.length) return 'gohid';
     let r = Math.random() * total;
     for (let i = 0; i < pool.length; i++) {
-      r -= CFG.variants[pool[i]].weight;
-      if (r <= 0) return pool[i];
+      r -= pool[i].w;
+      if (r <= 0) return pool[i].id;
     }
-    return pool[pool.length - 1];
+    return pool[pool.length - 1].id;
   },
 
   cfg(id) { return CFG.variants[id] || CFG.variants.gohid; },

@@ -81,6 +81,33 @@ const SKIP_UPGRADES = process.argv.includes('--no-upgrades');
 // tools.js reads the viewport for the flashbang's "everything on screen"
 // radius and draws with sprites; neither concerns the simulation.
 sandbox.Render = { w: 1280, h: 720, zoom: 1 };
+// achievements.js and arenas.js both persist through Save. A real in-memory
+// stub rather than a no-op, so the tests exercise granting and unlocks.
+sandbox.Save = {
+  data: { best: 0, lifetime: 0, runs: 0, arena: 'steppe',
+          achievements: {}, seenChars: {}, arenaBest: {} },
+  get settings() { return {}; },
+  flush() {},
+  set(k, v) { this.data[k] = v; },
+  markCharSeen(id) { this.data.seenChars[id] = true; },
+  hasAchievement(id) { return !!this.data.achievements[id]; },
+  grantAchievement(id) {
+    if (this.data.achievements[id]) return false;
+    this.data.achievements[id] = true;
+    return true;
+  },
+  recordRun(stats, arenaId) {
+    const best = stats.score > this.data.best;
+    if (best) this.data.best = stats.score;
+    this.data.lifetime += stats.score;
+    if (arenaId) {
+      if (stats.score > (this.data.arenaBest[arenaId] || 0)) {
+        this.data.arenaBest[arenaId] = stats.score;
+      }
+    }
+    return best;
+  },
+};
 sandbox.Sprites = { tinted: () => null, silhouette: () => null, base: {} };
 
 vm.createContext(sandbox);
@@ -88,7 +115,8 @@ vm.createContext(sandbox);
 for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',
                  'js/particles.js', 'js/entities.js', 'js/upgrades.js',
                  'js/tools.js', 'js/variants.js', 'js/characters.js',
-                 'js/events.js', 'js/pickups.js', 'js/game.js']) {
+                 'js/events.js', 'js/pickups.js', 'js/arenas.js',
+                 'js/achievements.js', 'js/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -105,6 +133,9 @@ const Characters = vm.runInContext('Characters', sandbox);
 const Variants = vm.runInContext('Variants', sandbox);
 const Events = vm.runInContext('Events', sandbox);
 const PickupsMod = vm.runInContext('Pickups', sandbox);
+const Save = sandbox.Save;
+const Arenas = vm.runInContext('Arenas', sandbox);
+const Achievements = vm.runInContext('Achievements', sandbox);
 Upgrades.init();
 Characters.init();
 const AydinClass = vm.runInContext('Aydin', sandbox);
@@ -1036,6 +1067,215 @@ console.log('\n-- pickups and chests --------------------------------------');
   PickupsMod.items.push({ kind: 'shard', x: c.x + 4000, y: c.y, t: 0.5, max: 26, bob: 0 });
   run(1);
   check('an uncollected pickup expires', PickupsMod.items.length === 0);
+}
+
+console.log('\n-- arenas --------------------------------------------------');
+
+{
+  let bad = 0;
+  const ids = Object.create(null);
+  for (const a of Arenas.list) {
+    if (ids[a.id]) bad++;
+    ids[a.id] = true;
+    if (!a.name || !a.mod || typeof a.unlock !== 'number') bad++;
+    // Every arena paints its own floor; a missing colour renders as
+    // transparent and the world simply is not there.
+    if (!a.floorA || !a.floorB || !a.decor || !a.decor2 || !a.edge) bad++;
+  }
+  check('every arena is unique, named and fully painted', bad === 0,
+        bad + ' malformed');
+  check('the default arena is free', Arenas.list[0].unlock === 0);
+}
+
+{
+  Save.data.lifetime = 0;
+  check('locked arenas are locked at zero lifetime score',
+        Arenas.unlocked(Arenas.byId('lake')) === false);
+  check('the steppe is always available',
+        Arenas.unlocked(Arenas.byId('steppe')) === true);
+
+  // Selecting something locked must not start a run the player cannot have.
+  Arenas.select('lake');
+  check('selecting a locked arena falls back to the default',
+        Arenas.current.id === 'steppe', 'got ' + Arenas.current.id);
+
+  Save.data.lifetime = 999999;
+  Arenas.select('lake');
+  check('an unlocked arena can be selected', Arenas.current.id === 'lake');
+  Save.data.lifetime = 0;
+  Arenas.select('steppe');
+}
+
+{
+  // Arena multipliers fold through the same path as events and modifiers.
+  newRun();
+  Save.data.lifetime = 999999;
+  Arenas.select('steppe');
+  Game.recomputeMods();
+  const base = Game.mods.gohidSpeed;
+  Arenas.select('salt');
+  Game.recomputeMods();
+  check('an arena multiplier reaches the game',
+        Game.mods.gohidSpeed > base,
+        base.toFixed(2) + ' -> ' + Game.mods.gohidSpeed.toFixed(2));
+  Arenas.select('steppe');
+  Game.recomputeMods();
+  check('leaving the arena takes its multiplier with it',
+        Math.abs(Game.mods.gohidSpeed - base) < 1e-9);
+}
+
+{
+  // Vision: the tighter of arena and modifier wins, so Fog in the Night
+  // Forest cannot come out as a relief.
+  Save.data.lifetime = 999999;
+  Arenas.select('forest');
+  Events.modifier = null;
+  const arenaOnly = Events.visionRadius();
+  Events.modifier = CFG.modifiers.list.filter((m) => m.id === 'fog')[0];
+  const both = Events.visionRadius();
+  check('fog inside the night forest is not a relief',
+        both <= arenaOnly && both > 0,
+        'arena ' + arenaOnly + ', with fog ' + both);
+  Events.modifier = null;
+  Arenas.select('steppe');
+}
+
+{
+  // Ruins: walls exist, and nothing is ever left standing inside one.
+  Save.data.lifetime = 999999;
+  Arenas.select('ruins');
+  Arenas._buildWalls();
+  check('the ruins actually generate walls', Arenas.walls.length > 0,
+        Arenas.walls.length + ' walls');
+
+  newRun();
+  Arenas.select('ruins');
+  Arenas._buildWalls();
+  run(6);
+  const inside = (e) => Arenas.walls.some((w) =>
+    e.x > w.x - 4 && e.x < w.x + w.w + 4 && e.y > w.y - 4 && e.y < w.y + w.h + 4);
+  const stuck = Game.aydins.filter(inside).length
+              + Game.gohids.filter(inside).length
+              + (inside(Game.commander) ? 1 : 0);
+  check('nothing ends up standing inside a wall', stuck === 0, stuck + ' stuck');
+  Arenas.select('steppe');
+  Arenas._buildWalls();
+}
+
+{
+  // Frozen Lake: momentum means the commander cannot stop on a coin.
+  newRun();
+  Save.data.lifetime = 999999;
+  Arenas.select('steppe');
+  Input.mx = 1; run(1); Input.mx = 0;
+  const before = Math.hypot(Game.commander.vx, Game.commander.vy);
+  run(0.1);
+  const steppeDrift = Math.hypot(Game.commander.vx, Game.commander.vy);
+
+  newRun();
+  Arenas.select('lake');
+  Input.mx = 1; run(1); Input.mx = 0;
+  run(0.1);
+  const lakeDrift = Math.hypot(Game.commander.vx, Game.commander.vy);
+  check('the frozen lake keeps you moving after you stop',
+        lakeDrift > steppeDrift,
+        'steppe ' + steppeDrift.toFixed(0) + ' vs lake ' + lakeDrift.toFixed(0));
+  Arenas.select('steppe');
+  Input.mx = 0;
+}
+
+{
+  // Night Forest tilts the mix toward stalkers rather than replacing it.
+  Save.data.lifetime = 999999;
+  newRun();
+  Game.time = 9999;
+  const rate = () => {
+    let n = 0;
+    for (let i = 0; i < 3000; i++) if (Variants.roll() === 'stalker') n++;
+    return n / 3000;
+  };
+  Arenas.select('steppe');
+  const plain = rate();
+  Arenas.select('forest');
+  const forest = rate();
+  check('the night forest is thicker with stalkers', forest > plain,
+        (plain * 100).toFixed(1) + '% -> ' + (forest * 100).toFixed(1) + '%');
+  Arenas.select('steppe');
+}
+
+console.log('\n-- achievements --------------------------------------------');
+
+{
+  let bad = 0;
+  const ids = Object.create(null);
+  for (const a of Achievements.list) {
+    if (ids[a.id]) bad++;
+    ids[a.id] = true;
+    if (!a.name || !a.desc) bad++;
+    // Either a stat threshold or a bespoke test -- one that has neither can
+    // never be earned and would sit in the grid forever.
+    if (!a.stat && !Achievements.tests[a.id]) bad++;
+  }
+  check('every trophy is unique, described and actually earnable',
+        bad === 0, bad + ' malformed');
+  check('there are around twenty trophies', Achievements.list.length >= 18,
+        Achievements.list.length);
+}
+
+{
+  newRun();
+  Save.data.achievements = {};
+  Achievements.reset();
+  // A stat threshold grants exactly once.
+  Game.stats.peakHerd = 250;
+  Achievements.check();
+  check('a stat trophy is granted when its bar is passed',
+        Save.hasAchievement('herd200'));
+  const n = Achievements.earnedThisRun.length;
+  Achievements.check();
+  check('a trophy is never granted twice',
+        Achievements.earnedThisRun.length === n, 'granted again');
+}
+
+{
+  newRun();
+  Save.data.achievements = {};
+  Achievements.reset();
+  // Lower thresholds must come with it, not instead of it.
+  Game.stats.peakHerd = 250;
+  Achievements.check();
+  check('passing a high bar also grants the lower ones',
+        Save.hasAchievement('herd50') && Save.hasAchievement('herd100'));
+}
+
+{
+  newRun();
+  Save.data.achievements = {};
+  Achievements.reset();
+  // A bespoke test: every arena unlocked.
+  Save.data.lifetime = 0;
+  Achievements.check();
+  check('a hidden trophy stays unearned until its condition holds',
+        !Save.hasAchievement('allArenas'));
+  Save.data.lifetime = 999999;
+  Achievements.check();
+  check('a bespoke trophy fires when its condition holds',
+        Save.hasAchievement('allArenas'));
+  Save.data.lifetime = 0;
+}
+
+{
+  newRun();
+  Save.data.achievements = {};
+  Achievements.reset();
+  // peakGohids is tracked by achievements.js, not by the game loop.
+  Game.gohids.length = 0;
+  for (let i = 0; i < 60; i++) Game.gohids.push(new GohidClass(0, 0));
+  Achievements.track();
+  check('peak gohids is tracked for its trophy',
+        Game.stats.peakGohids >= 60, 'peak ' + Game.stats.peakGohids);
+  Achievements.check();
+  check('surviving a crowd is rewarded', Save.hasAchievement('gohid50'));
 }
 
 console.log('\n-- the spiral ----------------------------------------------');

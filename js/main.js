@@ -45,6 +45,7 @@ const Main = {
     Music.init();
     Upgrades.init();          // build the id index before anything resets
     Characters.init();
+    Arenas.reset();
     Audio2.enabled = Save.settings.sfx;
     Audio2.volume = Save.settings.volume;
     Game.init();
@@ -186,6 +187,14 @@ Main._checkDeath = function () {
   set('res-best', U.formatNum(s.best));
   const nb = document.getElementById('res-new');
   if (nb) nb.hidden = !s.isBest;
+
+  const ach = document.getElementById('res-ach');
+  if (ach) {
+    const got = s.trophies || [];
+    ach.hidden = !got.length;
+    ach.textContent = got.length
+      ? 'TROPHIES: ' + got.map((a) => a.name).join('  ·  ') : '';
+  }
   UI.show('results');
 };
 

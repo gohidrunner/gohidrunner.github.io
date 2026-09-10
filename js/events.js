@@ -116,7 +116,12 @@ const Events = {
   /* Vision radius in world units, or 0 for unlimited. Arenas will feed into
    * this too when they land. */
   visionRadius() {
-    return (Events.modifier && Events.modifier.vision) ? Events.modifier.vision : 0;
+    const mod = (Events.modifier && Events.modifier.vision) || 0;
+    const arena = (typeof Arenas !== 'undefined') ? Arenas.vision() : 0;
+    // Whichever is tighter wins: Fog in the Night Forest should not be a
+    // relief because the two cancelled out.
+    if (mod && arena) return Math.min(mod, arena);
+    return mod || arena;
   },
 
   /* For the Collection screen's Active Effects tab. A permanent effect reports

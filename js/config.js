@@ -479,6 +479,84 @@ const CFG = {
     ],
   },
 
+  /* --------------------------------------------------------------- arenas
+   * Unlocked by LIFETIME score, so they open up across runs rather than
+   * within one. Each carries its own floor palette and its own twist; the
+   * twist is expressed as mods/flags/vision so it folds through exactly the
+   * same path as an event or a run modifier.
+   * --------------------------------------------------------------------- */
+  arenas: {
+    list: [
+      {
+        id: 'steppe', name: 'OPEN STEPPE', unlock: 0,
+        mod: 'No modifier. Open ground in every direction.',
+        floorA: '#3f4f31', floorB: '#3c4b2e',
+        decor: '#2f3b24', decor2: '#465734', edge: '#4a3f63',
+      },
+      {
+        id: 'forest', name: 'NIGHT FOREST', unlock: 5000,
+        mod: 'You cannot see far, and the stalkers are bolder.',
+        floorA: '#20301f', floorB: '#1c2b1c',
+        decor: '#152014', decor2: '#2b4028', edge: '#37543a',
+        vision: 420, variantBoost: { stalker: 1.5 },
+      },
+      {
+        id: 'salt', name: 'SALT FLATS', unlock: 20000,
+        mod: 'Everything moves faster. Nowhere to hide.',
+        floorA: '#c9c4b4', floorB: '#c3bdac',
+        decor: '#b3ac9a', decor2: '#d6d2c4', edge: '#8d86a8',
+        mods: { commanderSpeed: 1.15, aydinSpeed: 1.15, gohidSpeed: 1.15 },
+      },
+      {
+        id: 'ruins', name: 'RUINS', unlock: 60000,
+        mod: 'Walls and chokepoints. Gohids are pushed around them.',
+        floorA: '#4a4238', floorB: '#443d34',
+        decor: '#332e28', decor2: '#5c5347', edge: '#7d7392',
+        walls: 26,
+      },
+      {
+        id: 'lake', name: 'FROZEN LAKE', unlock: 150000,
+        mod: 'You slide. So does the herd.',
+        floorA: '#5b7f96', floorB: '#567a91',
+        decor: '#4a6b80', decor2: '#7ba3ba', edge: '#8ab6ff',
+        slide: 3.2,          // lower = more slippery; it is an accel rate
+      },
+    ],
+    wallPush: 420,
+    wallMin: 90, wallMax: 260, wallThick: 34,
+  },
+
+  /* --------------------------------------------------------- achievements
+   * `stat` names a field on Game.stats and `min` the threshold, which covers
+   * most of them without any bespoke code. Anything that cannot be expressed
+   * that way gets a `test` function in js/achievements.js.
+   * --------------------------------------------------------------------- */
+  achievements: {
+    checkInterval: 1,     // seconds; they are cheap but not free
+    list: [
+      { id: 'herd50',    name: 'A CROWD',       desc: 'Reach 50 aydins.',        stat: 'peakHerd', min: 50 },
+      { id: 'herd100',   name: 'A MULTITUDE',   desc: 'Reach 100 aydins.',       stat: 'peakHerd', min: 100 },
+      { id: 'herd200',   name: 'A NATION',      desc: 'Reach 200 aydins.',       stat: 'peakHerd', min: 200 },
+      { id: 'time5',     name: 'STILL RUNNING', desc: 'Survive 5 minutes.',      stat: 'time', min: 300 },
+      { id: 'time10',    name: 'LONG WATCH',    desc: 'Survive 10 minutes.',     stat: 'time', min: 600 },
+      { id: 'gohid50',   name: 'OUTNUMBERED',   desc: 'Reach 50 gohids and live.', stat: 'peakGohids', min: 50 },
+      { id: 'banish25',  name: 'SHEPHERD',      desc: 'Banish 25 gohids in one run.', stat: 'banished', min: 25 },
+      { id: 'lost100',   name: 'HARD LESSON',   desc: 'Lose 100 aydins in one run.',  stat: 'lost', min: 100 },
+      { id: 'level30',   name: 'SEASONED',      desc: 'Reach level 30.',         stat: 'level', min: 30 },
+      { id: 'score10k',  name: 'TEN THOUSAND',  desc: 'Score 10,000 in a run.',  stat: 'score', min: 10000 },
+      { id: 'score50k',  name: 'FIFTY THOUSAND', desc: 'Score 50,000 in a run.', stat: 'score', min: 50000 },
+      { id: 'pickups50', name: 'MAGPIE',        desc: 'Collect 50 pickups in one run.', stat: 'pickups', min: 50 },
+      { id: 'chests5',   name: 'OPENER',        desc: 'Open 5 chests in one run.', stat: 'chests', min: 5 },
+      { id: 'recover10', name: 'FIELD MEDIC',   desc: 'Recover 10 aydins with the Medic.', stat: 'recovered', min: 10 },
+      { id: 'legendary', name: 'GOLDEN',        desc: 'Open a legendary chest.', stat: 'legendaryChests', min: 1, hidden: true },
+      { id: 'allChars',  name: 'NAMED AND KEPT', desc: 'Finish a run with every character aydin alive.', hidden: true },
+      { id: 'leanWin',   name: 'LEAN YEARS',    desc: 'Score 5,000 in a Lean Times run.', hidden: true },
+      { id: 'everyEvo',  name: 'ALCHEMIST',     desc: 'Trigger every evolution in one run.', hidden: true },
+      { id: 'noLoss',    name: 'NOT ONE',       desc: 'Survive 3 minutes without losing an aydin.', hidden: true },
+      { id: 'allArenas', name: 'CARTOGRAPHER',  desc: 'Unlock every arena.', hidden: true },
+    ],
+  },
+
   /* --------------------------------------------------------------- minimap */
   minimap: {
     size:       148,     // css px, square

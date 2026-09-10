@@ -124,6 +124,8 @@ const Game = {
     Characters.reset();
     Events.reset();
     Pickups.reset();
+    Arenas.reset();
+    Achievements.reset();
     Game.hornT = 0;
     Game.idolT = 0;
     Game.idolMul = 1;
@@ -135,6 +137,7 @@ const Game = {
       scatters: 0, time: 0, score: 0, level: 1,
       charactersSeen: 0, charactersLost: 0, recovered: 0,
       pickups: 0, chests: 0, events: 0,
+      peakGohids: 0, legendaryChests: 0,
     };
 
     // The per-run modifier is rolled BEFORE the herd is placed, because two of
@@ -213,6 +216,7 @@ const Game = {
     if (!attract) {
       Events.update(dt);
       Pickups.update(dt);
+      Achievements.update(dt);
     }
     Game._updateRally(dt);
 
@@ -241,6 +245,12 @@ const Game = {
     }
 
     // --- resolve ----------------------------------------------------------
+    if (Arenas.walls.length) {
+      Arenas.resolve(Game.commander, dt);
+      for (let i = 0; i < Game.aydins.length; i++) Arenas.resolve(Game.aydins[i], dt);
+      for (let i = 0; i < Game.gohids.length; i++) Arenas.resolve(Game.gohids[i], dt);
+    }
+
     Game._resolveCaptures(dt);
     Game._resolveCommanderTouch();
     Game._updatePending(dt);
@@ -323,7 +333,10 @@ const Game = {
     // Start from the upgrade buffs, then multiply in the run modifier and
     // every running event. Folding from scratch is what lets two overlapping
     // events expire independently without leaving a multiplier behind.
+    // Arena, run modifier and every running event fold through one path.
     const ev = Events.fold({});
+    const am = Arenas.mods();
+    if (am) for (const k in am) ev[k] = (ev[k] == null ? 1 : ev[k]) * am[k];
     const mul = (k, base) => base * (ev[k] == null ? 1 : ev[k]);
 
     Game.mods.commanderSpeed = mul('commanderSpeed', b.commanderSpeed);
@@ -685,8 +698,10 @@ const Game = {
     // Save owns persistence; recordRun reports whether this beat the stored
     // best BEFORE overwriting it, which the results screen needs.
     if (typeof Save !== 'undefined' && Save.data) {
-      Game.stats.isBest = Save.recordRun(Game.stats);
+      Game.stats.isBest = Save.recordRun(Game.stats, Arenas.current.id);
       Game.stats.best = Save.data.best;
+      // After recordRun, so lifetime-score unlocks are already banked.
+      Game.stats.trophies = Achievements.onRunEnd();
     } else {
       Game.stats.isBest = false;
       Game.stats.best = Game.stats.score;

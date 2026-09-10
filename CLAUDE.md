@@ -7,10 +7,10 @@ every aydin caught becomes another gohid. The herd is the score and the bomb.
 **No build step.** `index.html` opens straight off the disk — plain
 `<script src>` tags, no bundler, no npm.
 
-Current state: **everything through step 5 is done** — core loop, UI, music,
-levelling/passives/tools, character aydins + gohid variants, and
-events/pickups/chests/modifiers. Arenas, achievements and the polish pass are
-not built yet.
+Current state: **everything through step 6 is done** — core loop, UI, music,
+levelling/passives/tools, character aydins + gohid variants,
+events/pickups/chests/modifiers, and arenas + achievements + collection. Only
+the step 7 polish pass remains.
 
 ---
 
@@ -25,7 +25,7 @@ in the bug log. Opening `index.html` straight off the filesystem also works;
 see *Why sprites and the font are base64*.
 
 ```bash
-node tools/headless.js                    # 96 assertions, no browser
+node tools/headless.js                    # 118 assertions, no browser
 node tools/headless.js --no-upgrades      # model a player who never levels
 node tools/headless.js --balance          # balance table over 5 simulated min
 node tools/headless.js --balance --minutes 12 --repeat 8
@@ -65,6 +65,8 @@ Scripts are plain classic scripts sharing one global scope. Order in
 | `js/characters.js` | The named aydins and their abilities | entities, tools |
 | `js/events.js` | Timed events and the per-run modifier — data, not pushes | CFG |
 | `js/pickups.js` | Ground items and chests | upgrades, tools |
+| `js/arenas.js` | The five maps: palette plus one twist each | CFG, save |
+| `js/achievements.js` | Persisted trophies, mostly config thresholds | save, game |
 | `js/game.js` | World state, update order, capture, spawning, exp | entities, grid |
 | `js/render.js` | Camera, zoom, culled floor, depth-sorted sprites | game, sprites |
 | `js/minimap.js` | Its own canvas on its own clock | game, render |
@@ -175,6 +177,22 @@ bookkeeping.
 reason. Skipping it leaves `Game.mods` holding a previous run's values, which
 is invisible until something reads a speed that is quietly 20% wrong. It
 produced a 1-in-5 test flake before both were fixed.
+
+**An arena is data with the same shape as an event.** Its twist is expressed as
+`mods` / `vision` / flags, so it folds through `Game.recomputeMods()` and
+`Events.visionRadius()` with no arena-specific plumbing in the game loop. Only
+two need real behaviour: Ruins pushes entities out of its walls, and Frozen
+Lake accelerates the commander instead of setting his velocity. Walls are
+generated from the run rather than stored.
+
+**Where two vision limits meet, the tighter wins.** Fog inside the Night Forest
+must not come out as a relief because the two cancelled.
+
+**Most achievements are a config line** — `stat` names a field on `Game.stats`,
+`min` is the bar. Only the handful that cannot be said that way get a `test`
+function. They are checked once a second, not per frame: twenty comparisons is
+cheap but it is pure waste sixty times a second for conditions that move at
+human speed.
 
 **Status effects refresh, they do not stack.** An aura calls `applySlow` every
 frame it contains a gohid; adding durations would leave anything that walked
@@ -410,9 +428,9 @@ visibly lose ground.
    ability each, 8 variants unlocked by run time, all from the same sprite
 5. ~~Events, pickups, chests, modifiers~~ **done** — 7 pickups, 3 chest tiers
    weighted by luck, 7 timed events, 6 per-run modifiers
-6. Arenas, achievements, collection — *results done; Collection lists owned
-   passives, tools, characters and live Active Effects; arenas and trophies
-   are still shells*
+6. ~~Arenas, achievements, collection~~ **done** — 5 arenas unlocked by
+   lifetime score, 20 trophies with hidden ones, Collection lists owned
+   passives, tools, characters and live Active Effects
 7. Polish: audio, particles, banners, mobile
 
 `Game.mods` is the multiplier bag upgrades/modifiers/events write into, and

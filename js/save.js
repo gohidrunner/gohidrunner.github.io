@@ -20,6 +20,7 @@ const Save = {
       runs: 0,
       arena: 'steppe',       // last selected
       achievements: {},      // id -> true
+      arenaBest: {},         // arena id -> best score on it
       seenChars: {},         // id -> true, for the Collection greying
       settings: {
         sfx: true,
@@ -64,11 +65,17 @@ const Save = {
 
   /* Called once at the end of a run. Returns whether it was a personal best,
    * because the results screen needs to know before the value is overwritten. */
-  recordRun(stats) {
+  recordRun(stats, arenaId) {
     const isBest = stats.score > Save.data.best;
     if (isBest) Save.data.best = stats.score;
     Save.data.lifetime += stats.score;
     Save.data.runs++;
+    if (arenaId) {
+      if (!Save.data.arenaBest) Save.data.arenaBest = {};
+      if (stats.score > (Save.data.arenaBest[arenaId] || 0)) {
+        Save.data.arenaBest[arenaId] = stats.score;
+      }
+    }
     Save.flush();
     return isBest;
   },
