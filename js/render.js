@@ -99,7 +99,7 @@ const Render = {
     // up on a phone -- where the cap makes DPR 1.5.
     ctx.setTransform(Render.dpr, 0, 0, Render.dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#2b3320';
+    ctx.fillStyle = CFG.palette.world.void;
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
@@ -149,7 +149,7 @@ const Render = {
     }
 
     // World bounds, so the edge of the map is legible before you hit it.
-    ctx.strokeStyle = '#3c4429';
+    ctx.strokeStyle = CFG.palette.world.edge;
     ctx.lineWidth = 6;
     ctx.strokeRect(0, 0, CFG.world.width, CFG.world.height);
   },
@@ -184,7 +184,8 @@ const Render = {
     if (!c) return;
     ctx.save();
     ctx.globalAlpha = Game.rallying ? 0.30 : 0.13;
-    ctx.strokeStyle = Game.rallying ? '#ffe8a8' : '#e8eede';
+    ctx.strokeStyle = Game.rallying ? CFG.palette.world.rallyRing
+                                    : CFG.palette.world.herdRing;
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 10]);
     ctx.beginPath();
@@ -221,8 +222,7 @@ const Render = {
   },
 
   _shadow(ctx, x, y, w) {
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#1d2416';
+    ctx.fillStyle = CFG.palette.world.shadow;
     ctx.fillRect(Math.round(x - w / 2), Math.round(y - 2), Math.round(w), 4);
     ctx.globalAlpha = 1;
   },
@@ -246,10 +246,11 @@ const Render = {
       // Newly recruited: flashes white and cannot be taken. Flashing is
       // quantised so it strobes in steps rather than pulsing smoothly.
       const on = (Math.floor(a.invuln * 12) & 1) === 0;
-      cv = on ? Sprites.silhouette('aydin', '#ffffff')
+      cv = on ? Sprites.silhouette('aydin', CFG.palette.world.invulnFlash)
               : Sprites.tinted('aydin', null);
     } else if (a.panic > 0) {
-      cv = Sprites.tinted('aydin', '#ffb3a0', 0.35);
+      cv = Sprites.tinted('aydin', CFG.palette.world.panicTint,
+                          CFG.palette.world.panicAmt);
     } else {
       cv = Sprites.tinted('aydin', null);
     }
@@ -266,9 +267,12 @@ const Render = {
 
     let cv;
     if (g.spawnFlash > 0 && (Math.floor(g.spawnFlash * 16) & 1) === 0) {
-      cv = Sprites.silhouette('gohid', '#ffffff');
+      cv = Sprites.silhouette('gohid', CFG.palette.world.invulnFlash);
     } else {
-      cv = Sprites.tinted('gohid', CFG.palette.gohidTint, g.leaving ? 0.15 : 0.30);
+      // Strong tint: both sprites are dark-haired head-and-shoulders photos
+      // and read almost identically at this size without it.
+      cv = Sprites.tinted('gohid', CFG.palette.gohidTint,
+                          g.leaving ? 0.22 : CFG.palette.gohidTintAmt);
     }
     if (!cv) return;
     if (g.leaving) ctx.globalAlpha = 0.5;
@@ -303,7 +307,7 @@ const Render = {
 
     if (Game.hitFlash > 0.01) {
       ctx.globalAlpha = U.quantise(Game.hitFlash, 4) * 0.20;
-      ctx.fillStyle = '#c8352a';
+      ctx.fillStyle = CFG.palette.world.hitFlash;
       ctx.fillRect(0, 0, w, h);
       ctx.globalAlpha = 1;
     }
@@ -332,11 +336,11 @@ const Render = {
     const kx = s.ox + (dx / len) * cl, ky = s.oy + (dy / len) * cl;
 
     ctx.globalAlpha = 0.22;
-    ctx.strokeStyle = '#f4ecd8';
+    ctx.strokeStyle = CFG.palette.world.stick;
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(s.ox, s.oy, R, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 0.42;
-    ctx.fillStyle = '#f4ecd8';
+    ctx.fillStyle = CFG.palette.world.stick;
     ctx.fillRect(Math.round(kx - 13), Math.round(ky - 13), 26, 26);
     ctx.globalAlpha = 1;
   },

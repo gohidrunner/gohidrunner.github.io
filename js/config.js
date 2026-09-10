@@ -181,9 +181,31 @@ const CFG = {
     protectRadiusMul: 1.35,  // must be within rallyRadius * this to count
   },
 
-  /* ------------------------------------------------------------------ score */
+  /* ------------------------------------------------------------ progression */
   score: {
     perAydinPerSecond: 1,
+  },
+
+  exp: {
+    perAydinPerSecond: 0.6,
+    curveBase:  20,      // exp needed for level 2
+    curveGrowth: 1.18,   // each level costs this much more than the last
+    cardsPerLevel: 3,
+  },
+
+  /* --------------------------------------------------------------- minimap */
+  minimap: {
+    size:       148,     // css px, square
+    dotHerd:      2,
+    dotGohid:     3,
+    dotCommander: 4,
+    refreshHz:   20,     // redrawn on its own clock, not every frame
+  },
+
+  /* -------------------------------------------------------------- banners */
+  banner: {
+    duration: 2.6,
+    popSteps: 5,
   },
 
   /* ------------------------------------------------------------------ input */
@@ -214,21 +236,61 @@ const CFG = {
     volume: 0.5,
   },
 
-  /* ---------------------------------------------------------------- palette */
+  /* ---------------------------------------------------------------- palette
+   * These MUST stay in step with the CSS custom properties in css/style.css.
+   * The canvas cannot read CSS variables, so the handful of colours needed for
+   * world and minimap drawing are duplicated here -- the CSS is the reference,
+   * this is the copy.
+   *
+   * The whole game reads off one idea: warm gold is yours, red is coming for
+   * you, cool blue is safe. Never tint a gohid warm or an aydin red.
+   * ------------------------------------------------------------------------ */
   palette: {
-    steppeFloorA: '#6f7f4a',
-    steppeFloorB: '#677844',
-    steppeDecor:  '#5c6b3e',
-    steppeDecor2: '#7d8d56',
-    aydinTint:    null,      // null = leave the base sprite untinted
-    gohidTint:    '#c65a4a',
-    commanderTint: null,
-    dust:         '#d8cba8',
-    blood:        '#8e3b34',
-    ui: {
-      aydin: '#ffd98a',
-      gohid: '#ff6a5a',
-      text:  '#f4ecd8',
+    ink:        '#0d0b14',
+    panel:      '#1b1726',
+    panelLt:    '#2a2438',
+    border:     '#4a3f63',
+    text:       '#ece6f5',
+    textDim:    '#9a8fb5',
+    aydin:      '#ffcc6a',
+    aydinGlow:  '#ffe9b0',
+    gohid:      '#e0435a',
+    gohidDark:  '#8f1f34',
+    rally:      '#8ab6ff',
+    score:      '#ffd76a',
+    exp:        '#5ad1c4',
+    good:       '#7ee081',
+    bad:        '#ff5c5c',
+
+    // World tinting. The gohid tint is strong on purpose: both photos are
+    // dark-haired head-and-shoulders cutouts, and at 40px they read almost
+    // identically unless the threat is pushed hard toward red.
+    gohidTint:      '#e0435a',
+    gohidTintAmt:   0.62,
+    aydinTint:      null,
+    commanderTint:  null,
+    dust:           '#d8cba8',
+    blood:          '#8f1f34',
+
+    // Open Steppe floor. Each arena overrides these in js/arenas.js.
+    steppeFloorA: '#3b4a2e',
+    steppeFloorB: '#36442a',
+    steppeDecor:  '#2f3b24',
+    steppeDecor2: '#465734',
+
+    // World furniture, kept here rather than inline in render.js so an arena
+    // can restyle the whole scene by swapping palette entries.
+    world: {
+      void:       '#0d0b14',   // outside the arena bounds
+      edge:       '#4a3f63',   // the arena boundary itself
+      shadow:     'rgba(13,11,20,0.32)',
+      herdRing:   '#cfc4e6',   // cohesion radius, idle
+      rallyRing:  '#8ab6ff',   // cohesion radius, rallying
+      invulnFlash:'#ffffff',
+      panicTint:  '#ff9aa6',
+      panicAmt:   0.34,
+      hitFlash:   '#e0435a',
+      stick:      '#ece6f5',
     },
   },
 
