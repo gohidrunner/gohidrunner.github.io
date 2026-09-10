@@ -55,7 +55,20 @@ const CFG = {
     maxDprDesktop: 2,
     cameraLerp:   0.12,  // camera follow smoothing per frame at 60fps
     cameraLookahead: 0.18, // shifts the view along the commander's velocity
-    zoom: 1,
+
+    // The camera zooms OUT on small viewports so roughly the same amount of
+    // world stays visible. Without this a phone shows 375 world units across
+    // against a desktop's 1280, so a herd of fifty is almost entirely
+    // off-screen and the game stops being about reading a crowd -- measured
+    // on a 375x812 viewport, 3 of 49 aydins were visible.
+    //
+    // Floored rather than fully compensating: at true parity a phone would
+    // render 44px sprites at 13px, which trades one legibility problem for
+    // another. 0.6 is the compromise, and it is a config number so it can be
+    // argued with.
+    minVisibleWorld: 900,  // world units to try to fit across the width
+    zoomMin: 0.6,
+    zoomMax: 1,
   },
 
   /* ------------------------------------------------------------- commander */
@@ -130,8 +143,18 @@ const CFG = {
     turnRate:    7,      // steering responsiveness
     spawnTelegraph: 1.5, // expanding ring + rising tone before it exists
     grabCooldown: 0.35,  // stops one gohid clearing a clump in a single frame
-    separation:   22,    // gohids shoulder each other apart so they don't stack
-    separationStrength: 90,
+    // Gohids shoulder each other apart. separationStrength has to be within
+    // reach of `speed`, or it loses: the seek term pulls at the full 250
+    // toward whichever aydin is nearest, so at 90 the push-apart was outgunned
+    // ~3:1 and a pack converging on one straggler collapsed into a literal
+    // stack of overlapping sprites. Measured over 150s on a crowded board,
+    // counting gohid pairs closer than 20px:
+    //     22 / 90   -> 37 overlapping pairs   (a pile of faces)
+    //     26 / 170  ->  0
+    //     30 / 320  ->  0, but noticeably reshapes the pack into a dragnet
+    // 26/170 is the smallest change that fixes it.
+    separation:   26,
+    separationStrength: 170,
     retargetInterval: 0.25,
 
     // Captures are the ONLY way the spec creates gohids, which means a player
@@ -188,7 +211,17 @@ const CFG = {
 
   exp: {
     perAydinPerSecond: 0.6,
-    curveBase:  20,      // exp needed for level 2
+    // DEVIATION FROM SPEC: the spec says curveBase 20. Measured, that gives a
+    // level-up every 2.6-4.5s for the first ten levels -- a card modal that
+    // pauses the game every three seconds, which is unplayable. Exp scales
+    // with herd size (0.6/aydin/sec), so ~30 aydins already earn 18 exp/sec
+    // against a 20-exp first level.
+    //   base  20 -> levels at 3,5,8,11,14,17,20,24,28,32s   (level 29 by 5min)
+    //   base  60 -> levels at 7,13,18,24,30,36,43,51,59,69s (level 16 by 5min)
+    //   base 120 -> levels at 12,21,30,39,48,57,66,78,91s   (level 14 by 5min)
+    // 120 gives a level every 9-18s, which is a normal roguelite cadence and
+    // still reaches level 30 in a long run. Flagged in CLAUDE.md for review.
+    curveBase:  120,     // exp needed for level 2
     curveGrowth: 1.18,   // each level costs this much more than the last
     cardsPerLevel: 3,
   },
@@ -196,6 +229,7 @@ const CFG = {
   /* --------------------------------------------------------------- minimap */
   minimap: {
     size:       148,     // css px, square
+    sizeMobile:  92,     // 148 swallowed 40% of a 375px-wide screen
     dotHerd:      2,
     dotGohid:     3,
     dotCommander: 4,
@@ -273,8 +307,10 @@ const CFG = {
     blood:          '#8f1f34',
 
     // Open Steppe floor. Each arena overrides these in js/arenas.js.
-    steppeFloorA: '#3b4a2e',
-    steppeFloorB: '#36442a',
+    // Kept close together on purpose: a wider delta reads as a chessboard
+    // rather than ground. The texture comes from the decor pass, not the tiles.
+    steppeFloorA: '#3f4f31',
+    steppeFloorB: '#3c4b2e',
     steppeDecor:  '#2f3b24',
     steppeDecor2: '#465734',
 

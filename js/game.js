@@ -24,14 +24,28 @@ const Game = {
   aydinGrid: null,
   gohidGrid: null,
 
+  // Owned by systems that do not exist yet. They are declared here, empty, so
+  // the HUD and minimap can iterate them unconditionally instead of guarding
+  // every access -- and so adding those systems is filling an array rather
+  // than teaching the UI a new shape.
+  tools: [],
+  characters: [],
+  effects: [],
+  pickups: [],
+  chests: [],
+
   time: 0,
   score: 0,
+  exp: 0,                    // toward the next level, reset on each level up
+  expToNext: 0,
+  level: 1,
   rallying: false,
   cohesionRadius: CFG.aydin.flock.cohesionRadius,
   scatterTimer: 0,
 
   recruitTimer: 0,
   ambientTimer: 0,
+  _attractGoal: null,
 
   shake: 0,
   hitFlash: 0,               // red vignette pulse when an aydin is lost
@@ -46,6 +60,7 @@ const Game = {
     gohidSpeed: 1,
     scoreMul: 1,
     recruitMul: 1,
+    expMul: 1,
   },
 
   stats: null,
@@ -68,6 +83,9 @@ const Game = {
 
     Game.time = 0;
     Game.score = 0;
+    Game.exp = 0;
+    Game.level = 1;
+    Game.expToNext = Game.expForLevel(1);
     Game.rallying = false;
     Game.cohesionRadius = CFG.aydin.flock.cohesionRadius;
     Game.scatterTimer = 0;
@@ -79,7 +97,7 @@ const Game = {
 
     Game.stats = {
       peakHerd: 0, lost: 0, created: 0, banished: 0,
-      scatters: 0, time: 0, score: 0,
+      scatters: 0, time: 0, score: 0, level: 1,
     };
 
     // Starting herd, ringed around the commander so the first second reads as
@@ -106,7 +124,18 @@ const Game = {
 
   update(dt) {
     Input.update();
-    if (Game.state !== 'playing') {
+
+    // A pausing screen stops the world completely. The alternative -- dimming
+    // the view while the herd is still being eaten behind it -- is the reason
+    // this is checked here rather than inside each screen.
+    if (typeof UI !== 'undefined' && UI.paused) {
+      Game.shake = Math.max(0, Game.shake - dt * 24);
+      return;
+    }
+
+    const attract = Game.state === 'attract';
+    if (attract) Game._attractDrive(dt);
+    else if (Game.state !== 'playing') {
       Particles.update(dt);
       Game.shake = Math.max(0, Game.shake - dt * 24);
       return;
@@ -143,10 +172,21 @@ const Game = {
 
     if (Game.scatterTimer > 0) Game.scatterTimer -= dt;
 
-    // --- score ------------------------------------------------------------
+    // --- score and exp ----------------------------------------------------
+    // Both scale with herd size, which is the whole tension: a bigger herd
+    // scores faster and levels faster, and is also more to lose.
     const herd = Game.aydins.length;
-    Game.score += herd * CFG.score.perAydinPerSecond * Game.mods.scoreMul * dt;
-    if (herd > Game.stats.peakHerd) Game.stats.peakHerd = herd;
+    if (!attract) {
+      Game.score += herd * CFG.score.perAydinPerSecond * Game.mods.scoreMul * dt;
+      Game.exp += herd * CFG.exp.perAydinPerSecond * Game.mods.expMul * dt;
+      if (herd > Game.stats.peakHerd) Game.stats.peakHerd = herd;
+
+      // while(), not if(): a huge herd can cross more than one level in a frame.
+      while (Game.exp >= Game.expToNext) {
+        Game.exp -= Game.expToNext;
+        Game._levelUp();
+      }
+    }
 
     Particles.update(dt);
     Game.shake = Math.max(0, Game.shake - dt * 24);
@@ -155,7 +195,60 @@ const Game = {
 
     Game._compact();
 
-    if (Game.aydins.length === 0) Game._die();
+    if (attract) {
+      // The menu background must never end. Keep it populated and keep the
+      // gohid count in the range where the scene stays legible.
+      if (Game.aydins.length < 14) Game.recruit();
+      if (Game.gohids.length > 6) Game.gohids.pop();
+    } else if (Game.aydins.length === 0) {
+      Game._die();
+    }
+  },
+
+  /* ---------------------------------------------------------- attract mode */
+
+  /* The menu background is the real simulation with an AI commander, not a
+   * canned animation -- so it always looks exactly like the game does, and
+   * costs one steering function instead of a separate renderer. */
+  attract() {
+    Game.reset();
+    Game.state = 'attract';
+    Game._attractGoal = null;
+    UI.clearBanners();
+  },
+
+  _attractDrive(dt) {
+    const c = Game.commander;
+    const pad = 400;
+    if (!Game._attractGoal ||
+        U.dist(c.x, c.y, Game._attractGoal.x, Game._attractGoal.y) < 160) {
+      Game._attractGoal = {
+        x: U.rand(pad, CFG.world.width - pad),
+        y: U.rand(pad, CFG.world.height - pad),
+      };
+    }
+    const a = U.angleTo(c.x, c.y, Game._attractGoal.x, Game._attractGoal.y);
+    Input.mx = Math.cos(a);
+    Input.my = Math.sin(a);
+    // An occasional rally so the menu shows off the herd snapping together.
+    Input.rally = (Game.time % 9) > 7.2;
+  },
+
+  /* ----------------------------------------------------------- progression */
+
+  /* Cost of going from `level` to `level + 1`. */
+  expForLevel(level) {
+    return CFG.exp.curveBase * Math.pow(CFG.exp.curveGrowth, level - 1);
+  },
+
+  _levelUp() {
+    Game.level++;
+    Game.expToNext = Game.expForLevel(Game.level);
+    Game.stats.level = Game.level;
+    Audio2.levelUp();
+    UI.banner('LEVEL ' + Game.level, 'level');
+    // The 3-card upgrade modal lands with the upgrade tables in the next step;
+    // levelling already runs and shows so the exp bar is not a decoration.
   },
 
   /* ----------------------------------------------------------------- rally */
@@ -367,12 +460,15 @@ const Game = {
     Audio2.gameOver();
     Game.shake = 14;
 
-    const best = U.storeGet(CFG.storage.key, { best: 0 });
-    Game.stats.isBest = Game.stats.score > (best.best || 0);
-    if (Game.stats.isBest) {
-      best.best = Game.stats.score;
-      U.storeSet(CFG.storage.key, best);
+    Game.stats.level = Game.level;
+    // Save owns persistence; recordRun reports whether this beat the stored
+    // best BEFORE overwriting it, which the results screen needs.
+    if (typeof Save !== 'undefined' && Save.data) {
+      Game.stats.isBest = Save.recordRun(Game.stats);
+      Game.stats.best = Save.data.best;
+    } else {
+      Game.stats.isBest = false;
+      Game.stats.best = Game.stats.score;
     }
-    Game.stats.best = best.best || 0;
   },
 };

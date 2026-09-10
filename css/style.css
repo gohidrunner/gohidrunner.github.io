@@ -1,24 +1,50 @@
 /* =============================================================================
  * style.css  --  canvas, HUD and overlay screens.
  *
- * Notes that are easy to undo by accident:
- *  - No emoji anywhere in the UI, and none in world rendering at all.
- *  - touch-action:none on the canvas, or a drag scrolls the page instead of
- *    steering, and every touchmove fights the browser's gesture handling.
- *  - Screens use plain block centring with overflow-y:auto, NOT flex centring.
- *    A flex-centred panel taller than the viewport clips its own top off with
- *    no way to scroll to it, which is exactly what happens on a phone in
- *    landscape.
+ * PIXEL-ART UI RULES. These are the house style; breaking one makes the whole
+ * interface read as a web page rather than a game:
+ *
+ *   - No border-radius. No soft shadows. No gradients except deliberate
+ *     two-colour dithers.
+ *   - Chunky 3px borders in --border, with a 1px --panel-lt highlight on the
+ *     top and left edges. That inset highlight is what makes a box read as a
+ *     raised pixel bevel instead of a flat rectangle, and it is done with
+ *     box-shadow: inset, NOT a blur.
+ *   - Every size, padding and gap is a multiple of 4.
+ *   - Transitions are <= 120ms and use steps(), so state changes read as
+ *     frames. The world renderer quantises its animation for the same reason;
+ *     a smoothly-eased UI next to stepped sprites looks broken.
+ *   - No emoji, anywhere.
+ *
+ * COLOUR MEANS ONE THING THROUGHOUT: warm gold is yours, red is coming for
+ * you, cool blue is safe. Never colour a gohid warm or an aydin red.
+ *
+ * Two layout traps that are easy to reintroduce:
+ *   - touch-action:none on the canvas, or a steering drag scrolls the page.
+ *   - .screen uses plain block centring with overflow-y:auto, NOT flex
+ *     centring. A flex-centred panel taller than the viewport clips its own
+ *     top off with no way to scroll to it -- which is what a phone in
+ *     landscape does to the level-up cards.
  * ========================================================================== */
 
 :root {
-  --ink:        #f4ecd8;
-  --ink-dim:    #b9b39c;
-  --aydin:      #ffd98a;
-  --gohid:      #ff6a5a;
-  --panel:      #232b1c;
-  --panel-line: #46512f;
-  --bg:         #2b3320;
+  --ink:        #0d0b14;
+  --panel:      #1b1726;
+  --panel-lt:   #2a2438;
+  --border:     #4a3f63;
+  --text:       #ece6f5;
+  --text-dim:   #9a8fb5;
+  --aydin:      #ffcc6a;
+  --aydin-glow: #ffe9b0;
+  --gohid:      #e0435a;
+  --gohid-dark: #8f1f34;
+  --rally:      #8ab6ff;
+  --score:      #ffd76a;
+  --exp:        #5ad1c4;
+  --good:       #7ee081;
+  --bad:        #ff5c5c;
+
+  --font: 'Gohid Pixel', ui-monospace, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -29,10 +55,12 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font);
+  /* The bitmap font must never be hinted or smoothed into grey edges. */
   -webkit-font-smoothing: none;
+  font-smooth: never;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
@@ -45,207 +73,642 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
-  touch-action: none;         /* see header note */
+  touch-action: none;          /* see header note */
   image-rendering: pixelated;
-  image-rendering: crisp-edges;
 }
 
-/* ------------------------------------------------------------------- HUD */
+canvas { image-rendering: pixelated; }
+
+/* A raised pixel bevel. Used by every panel, slot and card. */
+.bevel {
+  border: 3px solid var(--border);
+  background: var(--panel);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt);
+}
+
+/* ========================================================================= */
+/*                                   HUD                                     */
+/* ========================================================================= */
 
 #hud {
   position: fixed;
   inset: 0;
-  pointer-events: none;       /* the HUD must never eat a steering drag */
   z-index: 10;
+  pointer-events: none;        /* the HUD must never eat a steering drag */
 }
+#hud [hidden] { display: none !important; }
 
 .hud-top {
   position: absolute;
   top: 0; left: 0; right: 0;
-  padding: max(10px, env(safe-area-inset-top)) 12px 0 12px;
+  display: flex;               /* one COLUMN: exp bar, then the stat row */
+  flex-direction: column;
+  gap: 4px;
+  padding: max(8px, env(safe-area-inset-top)) 12px 0 12px;
 }
 
-/* One flex row, so on a narrow screen the counts and the score reflow
- * instead of stacking on top of each other. */
+/* ---------------------------------------------------------------- exp bar */
+
+.exp-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+
+.lvl {
+  flex: 0 0 auto;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--exp);
+  padding: 2px 6px;
+  border: 2px solid var(--border);
+  background: var(--panel);
+}
+
+.exp-track {
+  flex: 1 1 auto;
+  height: 12px;
+  min-width: 0;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt);
+  overflow: hidden;
+}
+.exp-fill {
+  height: 100%;
+  width: 0;
+  background: var(--exp);
+  /* Stepped so the bar advances in visible notches, not a smooth creep. */
+  transition: width 120ms steps(6, end);
+}
+
+/* ------------------------------------------------------------- stat row */
+
 .hud-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
 }
 
-.hud-counts { display: flex; gap: 14px; flex: 0 1 auto; min-width: 0; }
+.hud-counts { display: flex; gap: 16px; flex: 0 1 auto; min-width: 0; }
+
+/* A hard 1px outline in the background colour. The HUD sits directly on the
+ * world, and small dim text over a lit sprite is unreadable -- this keeps it
+ * legible against any arena without putting a scrim over the game. Four offset
+ * shadows, no blur, because a blurred glow would break the pixel rule. */
+.pixel-outline,
+.count-label, .timer, .fps, .rally-label {
+  text-shadow:
+     1px 0 0 var(--ink), -1px 0 0 var(--ink),
+     0 1px 0 var(--ink),  0 -1px 0 var(--ink);
+}
 
 .count { line-height: 1; }
 .count-label {
   font-size: 10px;
   letter-spacing: 2px;
-  color: var(--ink-dim);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  color: var(--text-dim);
 }
 .count-value {
   font-size: 40px;
-  font-weight: 700;
-  letter-spacing: -1px;
-  text-shadow: 0 3px 0 rgba(0,0,0,0.45);
+  line-height: 1;
+  text-shadow: 0 4px 0 var(--ink),
+     1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink);
 }
-.count.aydin .count-value { color: var(--aydin); }
-.count.aydin .count-label { color: #c9ab68; }
-.count.gohid .count-value { color: var(--gohid); }
-.count.gohid .count-label { color: #b8574c; }
+.count-aydin .count-value { color: var(--aydin); }
+.count-aydin .count-label { color: #b99a52; }
+.count-gohid .count-value { color: var(--gohid); }
+.count-gohid .count-label { color: #a3384a; }
 
-/* Gains and losses must not read the same at the edge of vision. */
+/* A gain and a loss must not read the same at the edge of vision: one grows
+ * and flashes green, the other shakes and flashes red. Both are stepped. */
 @keyframes pulseUp {
-  0%   { transform: scale(1);    filter: brightness(1); }
-  35%  { transform: scale(1.22); filter: brightness(1.8); }
-  100% { transform: scale(1);    filter: brightness(1); }
+  0%   { transform: scale(1);    color: var(--good); }
+  40%  { transform: scale(1.25); color: var(--good); }
+  100% { transform: scale(1); }
 }
 @keyframes pulseDown {
-  0%   { transform: translateX(0)    scale(1); }
-  20%  { transform: translateX(-5px) scale(1.14); }
-  45%  { transform: translateX(5px)  scale(1.14); }
-  70%  { transform: translateX(-3px) scale(1.06); }
-  100% { transform: translateX(0)    scale(1); }
+  0%   { transform: translateX(0);    color: var(--bad); }
+  25%  { transform: translateX(-6px); color: var(--bad); }
+  50%  { transform: translateX(6px);  color: var(--bad); }
+  75%  { transform: translateX(-3px); color: var(--bad); }
+  100% { transform: translateX(0); }
 }
-.pulse-up   { animation: pulseUp   0.28s steps(4, end); }
-.pulse-down { animation: pulseDown 0.34s steps(6, end); }
+/* The gohid count ramps from dark to bright across the 1.5s spawn telegraph,
+ * so the player connects the capture they just suffered to the gohid arriving
+ * because of it. */
+@keyframes gohidIncoming {
+  0%   { color: var(--gohid-dark); transform: scale(1.15); }
+  100% { color: var(--gohid);      transform: scale(1); }
+}
+.pulse-up   { animation: pulseUp   280ms steps(4, end); }
+.pulse-down { animation: pulseDown 340ms steps(6, end); }
+.gohid-incoming { animation: gohidIncoming 1500ms steps(8, end); }
 
 .hud-centre { text-align: center; flex: 1 1 auto; min-width: 0; }
 .score {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-shadow: 0 2px 0 rgba(0,0,0,0.45);
+  font-size: 28px;
+  color: var(--score);
+  text-shadow: 0 4px 0 var(--ink),
+     1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink);
 }
-.timer { font-size: 12px; color: var(--ink-dim); letter-spacing: 2px; }
+.timer { font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-top: 4px; }
 
-.hud-right { flex: 0 0 auto; text-align: right; }
-.fps { font-size: 10px; color: #7d8a63; }
+.hud-right {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.fps { font-size: 10px; color: #5f5677; }
 
-.hud-bottom {
+.icon-btn {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  cursor: pointer;
+}
+.icon-btn:active { background: var(--panel-lt); }
+
+/* ---------------------------------------------------------------- minimap */
+
+.hud-minimap {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  padding: 4px;
+  border: 3px solid var(--border);
+  background: var(--panel);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt);
+}
+.hud-minimap canvas { display: block; }
+
+/* ------------------------------------------------------------------ rally */
+
+.hud-rally {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(12px, env(safe-area-inset-bottom));
+  text-align: center;
+}
+.hud-rally canvas { display: block; }
+.rally-label {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #5f5677;
+}
+.hud-rally.on .rally-label { color: var(--rally); }
+
+/* ------------------------------------------------------------------ tools */
+
+.hud-tools {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 4px;
+}
+.tool-slot {
+  position: relative;
+  width: 44px; height: 44px;
+  border: 3px solid var(--border);
+  background: var(--panel);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt);
+}
+.tool-slot canvas { display: block; width: 100%; height: 100%; }
+.tool-pips {
+  position: absolute;
+  left: 0; right: 0; bottom: 2px;
+  display: flex; justify-content: center; gap: 2px;
+}
+.pip { width: 4px; height: 4px; background: var(--border); }
+.pip.on { background: var(--aydin); }
+
+/* -------------------------------------------------------- character strip */
+
+.hud-chars {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.char-portrait {
+  position: relative;
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  background: var(--panel);
+}
+.char-portrait canvas { display: block; width: 100%; height: 100%; }
+.char-portrait .char-badge {
+  position: absolute;
+  left: -2px; top: -2px;
+  font-size: 10px;
+  padding: 0 2px;
+  background: var(--panel);
+  color: var(--text);
+}
+/* A lost character aydin greys out and cracks. It should feel like a loss. */
+.char-portrait.lost { filter: grayscale(1) brightness(0.55); }
+.char-portrait.lost::after {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(to bottom right, transparent 46%, var(--gohid) 46%,
+                    var(--gohid) 54%, transparent 54%);
+}
+@keyframes shatter {
+  0%   { transform: scale(1)    translateX(0); }
+  30%  { transform: scale(1.18) translateX(-4px); }
+  60%  { transform: scale(0.94) translateX(4px); }
+  100% { transform: scale(1)    translateX(0); }
+}
+.char-portrait.shatter { animation: shatter 400ms steps(5, end); }
+
+/* --------------------------------------------------------------- banners */
+
+.banner-layer {
   position: absolute;
   left: 0; right: 0;
-  bottom: max(14px, env(safe-area-inset-bottom));
+  top: 28%;
   display: flex;
-  justify-content: center;
-}
-
-.rally-pill {
-  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
-  border: 2px solid #4a5533;
-  background: rgba(20,26,14,0.5);
-  color: #8d9a70;
-  font-size: 11px;
-  letter-spacing: 3px;
-  transition: none;
+  gap: 8px;
 }
-.rally-pill .rally-dot {
-  width: 8px; height: 8px;
-  background: #4a5533;
+@keyframes bannerIn {
+  0%   { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
 }
-.rally-pill.on {
-  border-color: var(--aydin);
-  color: #ffeec0;
-  background: rgba(70,58,20,0.55);
+@keyframes bannerOut {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 }
-.rally-pill.on .rally-dot { background: var(--aydin); }
+.banner {
+  padding: 8px 20px;
+  font-size: 24px;
+  letter-spacing: 4px;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid var(--border);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt);
+  text-align: center;
+  animation: bannerIn 200ms steps(5, end);
+}
+.banner-sub { display: block; font-size: 11px; letter-spacing: 2px; color: var(--text-dim); margin-top: 4px; }
+.banner.fading { animation: bannerOut 400ms steps(4, end) forwards; }
+.banner-level { color: var(--exp); border-color: var(--exp); }
+.banner-event { color: var(--aydin); border-color: var(--aydin); }
+.banner-bad   { color: var(--gohid); border-color: var(--gohid); }
 
-/* --------------------------------------------------------------- screens */
+/* ========================================================================= */
+/*                                 SCREENS                                   */
+/* ========================================================================= */
 
 .screen {
   position: fixed;
   inset: 0;
   z-index: 20;
-  overflow-y: auto;            /* see header note -- not flex centring */
+  overflow-y: auto;            /* see header note -- NOT flex centring */
   -webkit-overflow-scrolling: touch;
-  background: rgba(18,22,14,0.82);
-  padding: 24px 16px;
+  background: rgba(13, 11, 20, 0.88);
+  padding: 16px;
   text-align: center;
 }
+.screen[hidden] { display: none !important; }
+/* Pause dims rather than hides: you should see what you are going back to. */
+.screen-dim { background: rgba(13, 11, 20, 0.66); }
+
+/* The menu runs the real simulation behind it as its background, so its scrim
+ * is light enough to actually see the herd drifting past. Panels carry their
+ * own opaque fill, so text legibility does not depend on the scrim. */
+#screen-menu { background: rgba(13, 11, 20, 0.42); }
 
 .panel {
   display: inline-block;
-  text-align: center;
-  max-width: 460px;
   width: 100%;
-  margin: 6vh auto 24px auto;
-  padding: 26px 22px;
+  max-width: 420px;
+  margin: 4vh auto 24px auto;
+  padding: 20px 16px;
+  text-align: center;
+  border: 3px solid var(--border);
   background: var(--panel);
-  border: 3px solid var(--panel-line);
-  box-shadow: 0 8px 0 rgba(0,0,0,0.35);
+  box-shadow: inset 1px 1px 0 0 var(--panel-lt), 0 8px 0 rgba(0,0,0,0.4);
+}
+.panel-wide { max-width: 720px; }
+/* Slightly heavier than the default panel: it sits over live gameplay. */
+.panel-title { box-shadow: inset 1px 1px 0 0 var(--panel-lt), 0 8px 0 rgba(0,0,0,0.55); }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.panel-head h2 { margin: 0; font-size: 16px; letter-spacing: 4px; flex: 1 1 auto; }
+
+h1, h2 { font-weight: 400; }
+
+.title {
+  margin: 0 0 12px 0;
+  font-size: 32px;
+  line-height: 1.3;
+  letter-spacing: 3px;
+}
+.title-accent { display: block; color: var(--gohid); }
+
+.tag {
+  margin: 0 0 20px 0;
+  font-size: 11px;
+  line-height: 2;
+  color: var(--text-dim);
 }
 
-h1 {
-  margin: 0 0 10px 0;
-  font-size: 40px;
-  line-height: 1.05;
-  letter-spacing: 2px;
-}
-h1 .accent { color: var(--gohid); }
-
-.tag { color: var(--ink-dim); font-size: 13px; line-height: 1.7; margin: 0 0 20px 0; }
+/* ---------------------------------------------------------------- buttons */
 
 .btn {
   display: block;
   width: 100%;
-  margin: 14px 0 0 0;
-  padding: 15px 18px;
+  margin: 8px 0 0 0;
+  padding: 12px 16px;
   font: inherit;
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 13px;
   letter-spacing: 3px;
-  color: #20260f;
+  color: var(--text);
+  background: var(--panel-lt);
+  border: 3px solid var(--border);
+  box-shadow: inset 1px 1px 0 0 #3a3350;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 120ms steps(2, end);
+}
+.btn:hover { background: #342c46; }
+.btn:active { transform: translateY(2px); }
+
+.btn-primary {
+  color: var(--ink);
   background: var(--aydin);
-  border: none;
-  border-bottom: 5px solid #b3924f;
+  border-color: var(--aydin-glow);
+  box-shadow: inset 1px 1px 0 0 var(--aydin-glow), 0 4px 0 #a8823c;
+  font-size: 16px;
+}
+.btn-primary:hover { background: var(--aydin-glow); }
+.btn-primary:active { box-shadow: inset 1px 1px 0 0 var(--aydin-glow), 0 0 0 #a8823c; }
+
+.btn-danger { color: var(--gohid); border-color: var(--gohid-dark); }
+
+.btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.btn-grid .btn { margin: 0; }
+
+.btn-back {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  background: var(--panel-lt);
   cursor: pointer;
   pointer-events: auto;
 }
-.btn:active { transform: translateY(3px); border-bottom-width: 2px; }
 
-.hint { margin-top: 16px; font-size: 11px; color: #8d9a70; line-height: 1.9; }
-.hint b { color: var(--ink); }
+.hint { margin-top: 16px; font-size: 10px; color: #5f5677; line-height: 2; }
 .touch-hint { display: none; }
 
-.dead-title { margin: 0 0 6px 0; font-size: 20px; letter-spacing: 3px; color: var(--gohid); }
-.res-score { font-size: 46px; font-weight: 700; color: var(--aydin); }
-.res-new {
-  font-size: 12px; letter-spacing: 4px; color: #9be26a; margin-top: 2px;
-  animation: pulseUp 0.5s steps(4, end) infinite;
-}
+/* ---------------------------------------------------------------- results */
 
+.dead-title { margin: 0 0 8px 0; font-size: 16px; letter-spacing: 4px; color: var(--gohid); }
+.res-score { font-size: 44px; color: var(--score); text-shadow: 0 4px 0 var(--ink); }
+@keyframes newBest {
+  0%, 100% { color: var(--good); transform: scale(1); }
+  50%      { color: var(--aydin); transform: scale(1.08); }
+}
+.res-new {
+  margin-top: 4px;
+  font-size: 11px; letter-spacing: 4px; color: var(--good);
+  animation: newBest 600ms steps(4, end) infinite;
+}
 .res-grid {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 7px 14px;
-  margin: 20px 0 4px 0;
-  font-size: 13px;
+  gap: 8px 16px;
+  margin: 20px 0 8px 0;
+  font-size: 11px;
   text-align: left;
 }
-.res-k { color: var(--ink-dim); }
-.res-v { color: var(--ink); font-weight: 700; }
+.res-k { color: var(--text-dim); }
+.res-v { color: var(--text); }
+.res-ach {
+  margin: 12px 0 0 0;
+  padding-top: 12px;
+  border-top: 2px solid var(--border);
+  font-size: 10px;
+  color: var(--aydin);
+  line-height: 2;
+}
 
-/* ---------------------------------------------------------------- mobile */
+/* --------------------------------------------------------------- level up */
 
-/* Swap the WHOLE hint, not just its <b> tags. Hiding only the bold words left
- * the punctuation behind, so a phone read "/ arrows to move . to rally". */
+.levelup-head { margin-bottom: 16px; }
+.levelup-kicker { font-size: 11px; letter-spacing: 5px; color: var(--text-dim); }
+.levelup-level { font-size: 40px; color: var(--exp); }
+
+/* Cards wrap rather than shrink, so three cards become a column on a phone
+ * instead of three unreadable slivers. */
+.card-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.card {
+  flex: 1 1 180px;
+  max-width: 220px;
+  min-width: 160px;
+  padding: 12px;
+  text-align: center;
+  border: 3px solid var(--border);
+  background: var(--panel-lt);
+  box-shadow: inset 1px 1px 0 0 #3a3350;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 120ms steps(2, end);
+}
+.card:hover { border-color: var(--aydin); }
+.card-icon { width: 40px; height: 40px; margin: 0 auto 8px auto; display: block; }
+.card-name { font-size: 12px; letter-spacing: 2px; color: var(--text); }
+.card-kind { font-size: 9px; letter-spacing: 2px; margin-top: 4px; }
+.card-kind.passive { color: var(--aydin); }
+.card-kind.tool    { color: var(--rally); }
+.card-kind.evolve  { color: var(--exp); }
+.card-desc { font-size: 10px; line-height: 1.8; color: var(--text-dim); margin-top: 8px; }
+.card-pips { display: flex; justify-content: center; gap: 2px; margin-top: 8px; }
+
+@keyframes cardIn {
+  0%   { transform: translateY(16px) scale(0.9); opacity: 0; }
+  100% { transform: translateY(0)    scale(1);   opacity: 1; }
+}
+.card-in { animation: cardIn 180ms steps(4, end) both; }
+
+.chest-kicker { font-size: 14px; letter-spacing: 5px; margin-bottom: 16px; }
+.chest-normal    { color: var(--text); }
+.chest-rare      { color: var(--rally); }
+.chest-legendary { color: var(--aydin); }
+
+/* ------------------------------------------------------------------ tabs */
+
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 8px 4px;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.tab-on { color: var(--ink); background: var(--aydin); border-color: var(--aydin-glow); }
+.tab-body { text-align: left; min-height: 160px; }
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 4px;
+  border: 2px solid var(--border);
+  background: var(--panel-lt);
+  font-size: 10px;
+}
+.list-row.locked { opacity: 0.45; }
+.list-name { flex: 1 1 auto; color: var(--text); letter-spacing: 1px; }
+.list-desc { color: var(--text-dim); font-size: 9px; line-height: 1.7; margin-top: 4px; }
+.list-meta { flex: 0 0 auto; color: var(--aydin); }
+.empty-note { padding: 24px 8px; text-align: center; color: var(--text-dim); font-size: 10px; line-height: 2; }
+
+/* ---------------------------------------------------------------- arenas */
+
+.arena-list { display: flex; flex-direction: column; gap: 8px; }
+.arena-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+  border: 3px solid var(--border);
+  background: var(--panel-lt);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.arena-card.locked { cursor: not-allowed; opacity: 0.5; }
+.arena-card.selected { border-color: var(--aydin); }
+.arena-swatch { flex: 0 0 auto; width: 48px; height: 48px; border: 2px solid var(--border); }
+.arena-info { flex: 1 1 auto; min-width: 0; }
+.arena-name { font-size: 12px; letter-spacing: 2px; }
+.arena-mod  { font-size: 9px; color: var(--text-dim); line-height: 1.8; margin-top: 4px; }
+.arena-best { font-size: 9px; color: var(--score); margin-top: 4px; }
+.arena-lock { font-size: 9px; color: var(--gohid); margin-top: 4px; }
+
+/* -------------------------------------------------------------- trophies */
+
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.ach {
+  padding: 8px 4px;
+  border: 2px solid var(--border);
+  background: var(--panel-lt);
+  font-size: 8px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  min-height: 72px;
+}
+.ach.got { border-color: var(--aydin); color: var(--text); }
+.ach-name { font-size: 9px; color: var(--text); letter-spacing: 1px; margin-bottom: 4px; }
+.ach.got .ach-name { color: var(--aydin); }
+
+/* -------------------------------------------------------------- settings */
+
+.settings-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 2px solid var(--border);
+  background: var(--panel-lt);
+}
+.setting-name { flex: 1 1 auto; font-size: 10px; letter-spacing: 1px; }
+.setting-hint { font-size: 8px; color: var(--text-dim); line-height: 1.6; margin-top: 4px; }
+.toggle {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 4px 8px;
+  min-width: 52px;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.toggle.on { background: var(--good); border-color: var(--good); color: var(--ink); }
+.slider { flex: 0 0 96px; pointer-events: auto; accent-color: var(--aydin); }
+
+/* ========================================================================= */
+/*                                 MOBILE                                    */
+/* ========================================================================= */
+
+/* Swap the WHOLE hint, not just its emphasis tags. Hiding only the bold words
+ * left the punctuation behind, so a phone once read "/ arrows to move . to
+ * rally". */
 @media (pointer: coarse) {
   .key-hint { display: none; }
   .touch-hint { display: inline; }
 }
 
+/* Below 560px the tool tray is hidden and its contents move to Collection --
+ * four 44px slots plus a rally button do not coexist with a thumb. */
 @media (max-width: 560px) {
-  .count-value { font-size: 30px; }
+  .count-value { font-size: 28px; }
   .score { font-size: 20px; }
-  h1 { font-size: 32px; }
+  .title { font-size: 24px; }
+  .hud-tools { display: none; }
+  .hud-minimap { padding: 2px; }
+  .banner { font-size: 16px; padding: 8px 12px; }
+  .btn-grid { grid-template-columns: 1fr; }
+
+  /* Rally moves to the bottom-right corner and grows into a thumb target.
+   * Centred, it collided with the minimap and sat where no thumb rests. The
+   * hit area is the whole corner (see Input._isRallyZone), so this only has
+   * to SHOW where that is. */
+  .hud-rally {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    transform: none;
+  }
+  .hud-rally canvas { width: 76px; height: 76px; }
+  .rally-label { font-size: 9px; }
 }
 
-@media (max-height: 430px) {
-  .panel { margin-top: 2vh; padding: 16px; }
-  h1 { font-size: 26px; }
-  .tag { margin-bottom: 12px; }
+@media (max-height: 460px) {
+  .panel { margin-top: 2vh; padding: 12px; }
+  .title { font-size: 20px; }
+  .tag { margin-bottom: 12px; line-height: 1.7; }
+  .banner-layer { top: 20%; }
 }

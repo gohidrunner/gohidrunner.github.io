@@ -175,6 +175,45 @@ const Audio2 = {
     });
   },
 
+  /* Rising three-note arpeggio. Deliberately the most "positive" sound in the
+   * game -- it is competing with the capture sound for the player's attention. */
+  levelUp() {
+    [523, 659, 784, 1047].forEach((f, i) => {
+      Audio2.tone({ type: 'square', freq: f, dur: 0.18, vol: 0.15, delay: i * 0.075 });
+    });
+  },
+
+  /* One chime per card as it flips in; the pitch climbs with the index so a
+   * legendary chest audibly out-ranks a normal one. */
+  chestCard(i) {
+    Audio2.tone({ type: 'triangle', freq: 660 + i * 120, slide: 990 + i * 120,
+                  dur: 0.16, vol: 0.13, delay: i * 0.09 });
+  },
+
+  chest() {
+    Audio2.tone({ type: 'square', freq: 392, slide: 784, dur: 0.22, vol: 0.14 });
+    Audio2.noise({ freq: 2200, slide: 600, dur: 0.25, vol: 0.10, q: 0.9 });
+  },
+
+  eventBanner() {
+    Audio2.tone({ type: 'sawtooth', freq: 160, slide: 320, dur: 0.35, vol: 0.14,
+                  filter: 'lowpass', filterFreq: 1200 });
+    Audio2.tone({ type: 'square', freq: 640, dur: 0.12, vol: 0.09, delay: 0.1 });
+  },
+
+  /* The worst sound in the game, and it should be. A character aydin is the
+   * thing the player was specifically protecting, so this is dissonant, low,
+   * and longer than any other cue -- it has to cut through whatever else is
+   * happening at the moment it fires. */
+  characterLost() {
+    Audio2.tone({ type: 'sawtooth', freq: 210, slide: 42, dur: 0.9, vol: 0.24,
+                  filter: 'lowpass', filterFreq: 700 });
+    Audio2.tone({ type: 'square', freq: 233, slide: 58, dur: 0.85, vol: 0.13 });
+    Audio2.noise({ freq: 900, slide: 120, dur: 0.7, vol: 0.16, q: 0.5 });
+    Audio2.tone({ type: 'sawtooth', freq: 104, dur: 1.1, vol: 0.16, delay: 0.16,
+                  filter: 'lowpass', filterFreq: 400 });
+  },
+
   start() {
     [523, 659, 784].forEach((f, i) => {
       Audio2.tone({ type: 'square', freq: f, dur: 0.13, vol: 0.13, delay: i * 0.07 });

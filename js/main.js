@@ -41,14 +41,19 @@ const Main = {
     Main.canvas.addEventListener('contextrestored', Main._onContextRestored);
 
     Main.resize(true);
+    Save.load();
+    Audio2.enabled = Save.settings.sfx;
+    Audio2.volume = Save.settings.volume;
     Game.init();
     Render.init(Main.canvas);
+    Minimap.init();
     HUD.init();
+    UI.init();
     Input.init(Main.canvas, () => Audio2.resume());
-    Screens.init();
 
     Sprites.load(() => {
-      Screens.show('title');
+      UI.show('menu');
+      Game.attract();
       Main.last = performance.now();
       Main.raf = requestAnimationFrame(Main.frame);
     });
@@ -75,6 +80,8 @@ const Main = {
 
     Render.w = cssW;
     Render.h = cssH;
+    Render.updateZoom();
+    Minimap.resize();          // its own DPR, independent of the main canvas
     Render.dpr = dpr;                    // Render.draw() re-applies this
     Render._vignette = null;             // regenerate at the new size
 
@@ -137,8 +144,12 @@ const Main = {
         Render.draw();
       }
 
-      if (Game.state === 'playing') HUD.update(Main.fps);
-      Screens.tick();
+      if (Game.state === 'playing' && !UI.paused) {
+        HUD.update(dt, Main.fps);
+        Minimap.update(dt);
+      }
+      UI.updateBanners(dt);
+      Main._checkDeath();
 
     } catch (err) {
       // One bad frame must not end the run.
@@ -147,49 +158,27 @@ const Main = {
   },
 };
 
-/* --------------------------------------------------------------- screens */
-
-/* Title / death overlays. Deliberately thin in step 1 -- the full menu,
- * arena select and results screens land in a later step. */
-const Screens = {
-  cur: null,
-
-  init() {
-    document.getElementById('btn-play').addEventListener('click', () => {
-      Audio2.resume();
-      Screens.show(null);
-      HUD.reset();
-      Game.start();
-    });
-    document.getElementById('btn-again').addEventListener('click', () => {
-      Audio2.resume();
-      Screens.show(null);
-      HUD.reset();
-      Game.start();
-    });
-  },
-
-  show(name) {
-    Screens.cur = name;
-    document.getElementById('screen-title').style.display = name === 'title' ? '' : 'none';
-    document.getElementById('screen-dead').style.display = name === 'dead' ? '' : 'none';
-    HUD.show(name === null);
-  },
-
-  tick() {
-    if (Game.state === 'dead' && Screens.cur !== 'dead') {
-      Screens.show('dead');
-      const s = Game.stats;
-      const set = (id, v) => { document.getElementById(id).textContent = v; };
-      set('res-score', U.formatNum(s.score));
-      set('res-peak', s.peakHerd);
-      set('res-lost', s.lost);
-      set('res-created', s.created);
-      set('res-time', U.formatTime(s.time));
-      set('res-best', U.formatNum(s.best));
-      document.getElementById('res-new').style.display = s.isBest ? '' : 'none';
-    }
-  },
+/* The run ended: hand the stats to the results screen. Polled from the frame
+ * loop rather than pushed from Game._die so that game.js stays unaware of the
+ * DOM -- it is the same reason the headless harness can run game.js at all. */
+Main._checkDeath = function () {
+  if (Game.state !== 'dead' || UI.current === 'results') return;
+  const s = Game.stats;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  };
+  set('res-score', U.formatNum(s.score));
+  set('res-peak', s.peakHerd);
+  set('res-lost', s.lost);
+  set('res-created', s.created);
+  set('res-banished', s.banished);
+  set('res-level', s.level || 1);
+  set('res-time', U.formatTime(s.time));
+  set('res-best', U.formatNum(s.best));
+  const nb = document.getElementById('res-new');
+  if (nb) nb.hidden = !s.isBest;
+  UI.show('results');
 };
 
 window.addEventListener('DOMContentLoaded', Main.boot);

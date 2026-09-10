@@ -57,6 +57,16 @@ sandbox.Input = {
   consumeRallyReleased() { const v = this.rallyReleased; this.rallyReleased = false; return v; },
 };
 
+// game.js announces level-ups through UI and asks it whether a pausing screen
+// is open. Neither concerns the simulation, so both are stubbed rather than
+// loaded -- keeping game.js free of DOM knowledge is what lets it run here.
+sandbox.UI = {
+  paused: false,
+  banners: [],
+  banner(text) { this.banners.push(text); },
+  clearBanners() { this.banners.length = 0; },
+};
+
 vm.createContext(sandbox);
 
 for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',

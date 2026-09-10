@@ -19,6 +19,7 @@ const Render = {
   view: { x0: 0, y0: 0, x1: 0, y1: 0 },
   camX: 0, camY: 0,
   w: 0, h: 0,               // css pixels
+  zoom: 1,                  // <1 means zoomed out; see CFG.display.minVisibleWorld
   dpr: 1,                   // set by Main.resize; see the note in draw()
   _flip: new WeakMap(),
   _vignette: null,
@@ -31,6 +32,16 @@ const Render = {
     Render.ctx.imageSmoothingEnabled = false;
     Render.camX = Game.commander ? Game.commander.x : CFG.world.width / 2;
     Render.camY = Game.commander ? Game.commander.y : CFG.world.height / 2;
+  },
+
+  /* Recomputed whenever the canvas is sized. */
+  updateZoom() {
+    const D = CFG.display;
+    const z = U.clamp(Render.w / D.minVisibleWorld, D.zoomMin, D.zoomMax);
+    // Snap to 1/20ths so resizing cannot produce a continuous stream of
+    // slightly different scales, each of which resamples every sprite edge
+    // differently and makes the whole scene crawl.
+    Render.zoom = Math.round(z * 20) / 20;
   },
 
   /* A horizontally mirrored copy of a sprite canvas, built once and reused. */
@@ -62,12 +73,12 @@ const Render = {
     Render.camX = U.damp(Render.camX, tx, rate, dt);
     Render.camY = U.damp(Render.camY, ty, rate, dt);
 
-    const hw = Render.w / 2, hh = Render.h / 2;
+    const hw = Render.w / (2 * Render.zoom), hh = Render.h / (2 * Render.zoom);
     // Only clamp on an axis where the world is actually bigger than the view;
     // otherwise a small window would pin the camera to a corner.
-    if (CFG.world.width > Render.w) Render.camX = U.clamp(Render.camX, hw, CFG.world.width - hw);
+    if (CFG.world.width > hw * 2) Render.camX = U.clamp(Render.camX, hw, CFG.world.width - hw);
     else Render.camX = CFG.world.width / 2;
-    if (CFG.world.height > Render.h) Render.camY = U.clamp(Render.camY, hh, CFG.world.height - hh);
+    if (CFG.world.height > hh * 2) Render.camY = U.clamp(Render.camY, hh, CFG.world.height - hh);
     else Render.camY = CFG.world.height / 2;
   },
 
@@ -85,12 +96,17 @@ const Render = {
       sy = Math.round(U.rand(-Game.shake, Game.shake));
     }
 
-    const ox = Math.round(w / 2 - Render.camX) + sx;
-    const oy = Math.round(h / 2 - Render.camY) + sy;
+    // World units visible on screen, which is larger than the CSS size when
+    // zoomed out. Every camera and culling calculation works in these units.
+    const z = Render.zoom;
+    const vw = w / z, vh = h / z;
+
+    const ox = Math.round(vw / 2 - Render.camX) + sx;
+    const oy = Math.round(vh / 2 - Render.camY) + sy;
 
     const v = Render.view;
     v.x0 = -ox - 64; v.y0 = -oy - 64;
-    v.x1 = -ox + w + 64; v.y1 = -oy + h + 64;
+    v.x1 = -ox + vw + 64; v.y1 = -oy + vh + 64;
 
     // Draw in CSS pixels by re-applying the DPR scale. Resetting to the
     // identity here instead would paint a w*h CSS-pixel rectangle onto a
@@ -103,6 +119,7 @@ const Render = {
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
+    ctx.scale(z, z);
     ctx.translate(ox, oy);
 
     Render._drawFloor(ctx, v);
