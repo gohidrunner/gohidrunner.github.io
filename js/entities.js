@@ -36,7 +36,10 @@ class Commander {
     const C = CFG.commander;
     // rallySlow comes from tuning, not config: Long Legs and the Iron Herd
     // evolution both reduce the rally speed penalty.
-    const speed = C.speed * (game.rallying ? game.tuning.rallySlow : 1)
+    // A Rally Horn rally is free: the herd tightens but the commander keeps
+    // full speed, which is the whole point of the pickup.
+    const paying = game.rallying && game.hornT <= 0;
+    const speed = C.speed * (paying ? game.tuning.rallySlow : 1)
                 * game.mods.commanderSpeed;
 
     this.vx = Input.mx * speed;
@@ -282,6 +285,13 @@ class Gohid {
     if (this.grabCd > 0) this.grabCd -= dt;
     if (this.spawnFlash > 0) this.spawnFlash -= dt;
 
+    // The Silence stops every gohid dead. Read here rather than pushed by the
+    // event scheduler, so it costs nothing when no event is running.
+    if (typeof Events !== 'undefined' && Events.flag('silence')) {
+      this.vx = 0; this.vy = 0;
+      return;
+    }
+
     if (this.stunT > 0) this.stunT -= dt;
     if (this.rootT > 0) this.rootT -= dt;
     if (this.blindT > 0) this.blindT -= dt;
@@ -362,6 +372,13 @@ class Gohid {
     } else if (this.lure) {
       // A decoy outranks the herd for as long as it lasts.
       const dx = this.lure.x - this.x, dy = this.lure.y - this.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      dvx = (dx / d) * speed;
+      dvy = (dy / d) * speed;
+    } else if (typeof Events !== 'undefined' && Events.flag('calling')) {
+      // They want YOU instead of the herd -- total relief, and the only time
+      // the commander is the thing being chased.
+      const dx = game.commander.x - this.x, dy = game.commander.y - this.y;
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
       dvx = (dx / d) * speed;
       dvy = (dy / d) * speed;

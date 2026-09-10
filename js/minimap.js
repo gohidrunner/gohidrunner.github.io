@@ -100,14 +100,16 @@ const Minimap = {
     }
     ctx.globalAlpha = 1;
 
-    // Pickups and chests, when those systems exist.
-    if (Game.pickups) {
+    // Pickups and chests. The Scout marks them; without it they are only
+    // visible when they are already on screen.
+    const marks = (typeof Characters !== 'undefined') && Characters.marksPickups();
+    if (marks && Game.pickups) {
       for (let i = 0; i < Game.pickups.length; i++) {
         const p = Game.pickups[i];
         Minimap._dot(ctx, p.x, p.y, 3, P.exp);
       }
     }
-    if (Game.chests) {
+    if (marks && Game.chests) {
       for (let i = 0; i < Game.chests.length; i++) {
         const c = Game.chests[i];
         Minimap._dot(ctx, c.x, c.y, 4, P.score);

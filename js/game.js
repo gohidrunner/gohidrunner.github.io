@@ -31,6 +31,9 @@ const Game = {
   tools: [],
   characters: [],
   frame: 0,                  // frame counter, used for per-frame aura stamps
+  hornT: 0,                  // Rally Horn: a free perfect rally
+  idolT: 0,                  // Cursed Idol: timed score bonus
+  idolMul: 1,
   effects: [],
   pickups: [],
   chests: [],
@@ -119,6 +122,11 @@ const Game = {
     Upgrades.reset();
     Tools.reset();
     Characters.reset();
+    Events.reset();
+    Pickups.reset();
+    Game.hornT = 0;
+    Game.idolT = 0;
+    Game.idolMul = 1;
     Game.tools = Tools.active;
     Game.characters = Characters.active;
 
@@ -126,26 +134,43 @@ const Game = {
       peakHerd: 0, lost: 0, created: 0, banished: 0,
       scatters: 0, time: 0, score: 0, level: 1,
       charactersSeen: 0, charactersLost: 0, recovered: 0,
+      pickups: 0, chests: 0, events: 0,
     };
+
+    // The per-run modifier is rolled BEFORE the herd is placed, because two of
+    // them change what the starting board even is.
+    const mod = Events.rollModifier();
 
     // Starting herd, ringed around the commander so the first second reads as
     // "this is yours to protect" rather than "collect these".
     const c = Game.commander;
-    for (let i = 0; i < CFG.recruit.startingHerd; i++) {
-      const a = (Math.PI * 2 * i) / CFG.recruit.startingHerd;
-      const r = U.rand(60, 130);
+    const startHerd = (mod && mod.startAydins) || CFG.recruit.startingHerd;
+    for (let i = 0; i < startHerd; i++) {
+      const a = (Math.PI * 2 * i) / startHerd;
+      const r = U.rand(60, 130) * (startHerd > 20 ? 1.8 : 1);
       const ay = new Aydin(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, false);
       ay.invuln = 0;
       Game.aydins.push(ay);
     }
-    for (let i = 0; i < CFG.gohid.starting; i++) Game.spawnAmbientGohid();
+    const startGohids = (mod && mod.startGohids) || CFG.gohid.starting;
+    for (let i = 0; i < startGohids; i++) Game.spawnAmbientGohid();
     Game.stats.peakHerd = Game.aydins.length;
+
+    // Fold the multipliers now that the modifier is known. Without this,
+    // Game.mods keeps the PREVIOUS run's values until something else happens
+    // to recompute -- Game.start() did, but Game.attract() did not, so the
+    // menu ran with whatever the last run left behind.
+    Game.recomputeMods();
   },
 
   start() {
     Game.reset();
     Game.state = 'playing';
     Audio2.start();
+    Game.recomputeMods();
+    if (Events.modifier) {
+      UI.banner(Events.modifier.name, 'event', Events.modifier.desc);
+    }
   },
 
   /* ---------------------------------------------------------------- update */
@@ -180,6 +205,15 @@ const Game = {
     Game.time += dt;
     Game.frame++;
     if (Game.stampedeT > 0) Game.stampedeT -= dt;
+    if (Game.hornT > 0) Game.hornT -= dt;
+    if (Game.idolT > 0) {
+      Game.idolT -= dt;
+      if (Game.idolT <= 0) Game.recomputeMods();   // bonus expired
+    }
+    if (!attract) {
+      Events.update(dt);
+      Pickups.update(dt);
+    }
     Game._updateRally(dt);
 
     // --- grids: one consistent snapshot for every steering decision --------
@@ -286,10 +320,19 @@ const Game = {
     const b = Game.buffs;
     if (!b) return;
 
-    Game.mods.commanderSpeed = b.commanderSpeed;
-    Game.mods.aydinSpeed = b.aydinSpeed * Tools.aydinSpeedAura();
-    Game.mods.recruitMul = b.recruitMul;
-    Game.mods.expMul = b.expMul;
+    // Start from the upgrade buffs, then multiply in the run modifier and
+    // every running event. Folding from scratch is what lets two overlapping
+    // events expire independently without leaving a multiplier behind.
+    const ev = Events.fold({});
+    const mul = (k, base) => base * (ev[k] == null ? 1 : ev[k]);
+
+    Game.mods.commanderSpeed = mul('commanderSpeed', b.commanderSpeed);
+    Game.mods.aydinSpeed = mul('aydinSpeed', b.aydinSpeed * Tools.aydinSpeedAura());
+    Game.mods.recruitMul = mul('recruitMul', b.recruitMul);
+    Game.mods.expMul = mul('expMul', b.expMul);
+    Game.mods.gohidSpeed = mul('gohidSpeed', 1);
+    Game.mods.scoreMul = mul('scoreMul', 1)
+                       * (Game.idolT > 0 ? Game.idolMul : 1);
 
     Game.tuning.panicTime = CFG.aydin.panicTime * b.panicTimeMul;
     Game.tuning.cohesionStrength = b.cohesionStrength;
@@ -333,7 +376,10 @@ const Game = {
 
   _updateRally(dt) {
     const wasRallying = Game.rallying;
-    Game.rallying = Input.rally;
+    // The Rally Horn is a free perfect rally: tight and protected, and without
+    // the speed cost, which is what makes it worth picking up rather than just
+    // holding the button.
+    Game.rallying = Input.rally || Game.hornT > 0;
 
     const F = CFG.aydin.flock;
     const b = Game.buffs;
@@ -371,6 +417,7 @@ const Game = {
       const g = Game.gohids[i];
       if (!g.alive || g.leaving || g.grabCd > 0) continue;
       if (!g.canGrab) continue;              // howlers and herders never grab
+      if (Events.flag('calling')) continue;  // they are coming for you instead
 
       const reach = g.grabRadius;
       const cand = Game.aydinGrid.query(g.x, g.y, reach, out);
@@ -471,8 +518,12 @@ const Game = {
     // The medic may pull one back before the loss lands.
     if (Characters.tryRecover(aydin.x, aydin.y)) Game.stats.recovered++;
 
-    // The consequence: a new hunter, born where you lost one.
-    Game.queueGohid(aydin.x, aydin.y);
+    // The consequence: a new hunter, born where you lost one. Thin Ice makes
+    // it two.
+    const n = Events.captureSpawnCount();
+    for (let i = 0; i < n; i++) {
+      Game.queueGohid(aydin.x + U.rand(-18, 18), aydin.y + U.rand(-18, 18));
+    }
 
     Game._checkSecondWind();
   },
@@ -584,7 +635,7 @@ const Game = {
     Game.recruitTimer -= dt;
     if (Game.recruitTimer <= 0) {
       Game.recruitTimer += interval;
-      Game.recruit();
+      if (!Events.flag('noRecruits')) Game.recruit();
     }
 
     const A = CFG.gohid.ambient;

@@ -7,9 +7,10 @@ every aydin caught becomes another gohid. The herd is the score and the bomb.
 **No build step.** `index.html` opens straight off the disk — plain
 `<script src>` tags, no bundler, no npm.
 
-Current state: **core loop, UI pass, levelling/passives/tools, and character
-aydins + gohid variants are done.** Events, pickups, chests, arenas and
-achievements are not built yet — the UI has their shells.
+Current state: **everything through step 5 is done** — core loop, UI, music,
+levelling/passives/tools, character aydins + gohid variants, and
+events/pickups/chests/modifiers. Arenas, achievements and the polish pass are
+not built yet.
 
 ---
 
@@ -24,7 +25,7 @@ in the bug log. Opening `index.html` straight off the filesystem also works;
 see *Why sprites and the font are base64*.
 
 ```bash
-node tools/headless.js                    # 44 assertions, no browser
+node tools/headless.js                    # 96 assertions, no browser
 node tools/headless.js --no-upgrades      # model a player who never levels
 node tools/headless.js --balance          # balance table over 5 simulated min
 node tools/headless.js --balance --minutes 12 --repeat 8
@@ -55,12 +56,15 @@ Scripts are plain classic scripts sharing one global scope. Order in
 | `js/audio.js` | Procedural WebAudio, one method per event | CFG |
 | `js/particles.js` | Fixed-size square-particle pool | CFG, utils |
 | `js/save.js` | Persisted profile: best, lifetime, unlocks, settings | CFG, utils |
+| `js/music.js` | Background tracks. HTMLAudio, **not** WebAudio | CFG, save |
 | `js/input.js` | Keyboard + floating touch stick → `mx/my` + `rally` | CFG, audio |
 | `js/entities.js` | `Commander`, `Aydin`, `Gohid` | all of the above |
 | `js/upgrades.js` | The shared passive+tool level map, buffs, evolutions | entities |
 | `js/tools.js` | Auto-firing tools, world zones, escorts | upgrades |
 | `js/variants.js` | Gohid kinds: data plus one behaviour switch | entities |
 | `js/characters.js` | The named aydins and their abilities | entities, tools |
+| `js/events.js` | Timed events and the per-run modifier — data, not pushes | CFG |
+| `js/pickups.js` | Ground items and chests | upgrades, tools |
 | `js/game.js` | World state, update order, capture, spawning, exp | entities, grid |
 | `js/render.js` | Camera, zoom, culled floor, depth-sorted sprites | game, sprites |
 | `js/minimap.js` | Its own canvas on its own clock | game, render |
@@ -148,6 +152,29 @@ else to distinguish a runner from a herder.
 **Everything that removes a gohid goes through `Game.banishGohid()`,** so the
 splitter's parting gift cannot be forgotten by a future caller. The Warden and
 Honour Guard both route through it.
+
+**Music is HTMLAudio, not WebAudio, and that is deliberate.** `decodeAudioData`
+needs the file fetched first and `fetch` is blocked on a `file://` page; and
+routing an `<audio>` element through `createMediaElementSource` taints the
+graph for a `file://` source and can output silence. So crossfades move
+`.volume` on a timer. Music files stay as FILES rather than base64 — sprites
+and the font are inlined so the page can read their *pixels*, but music only
+needs playing, and inlining 5MB would mean parsing 6.7MB of base64 before the
+first frame.
+
+**Events never push; systems pull.** An event is data: a duration, a bag of
+multipliers, and some flags. The scheduler only starts and stops them and asks
+the game to refold. Multipliers fold in `Game.recomputeMods()`; anything that
+is not a multiplier is a FLAG asked for at the point of use —
+`Events.flag('silence')` in the gohid update, `Events.flag('thinIce')` in the
+capture path. Two overlapping events therefore expire independently with no
+bookkeeping.
+
+**Any call that clears state must leave the folded multipliers consistent.**
+`Game.reset()` and `Events.reset()` both call `Game.recomputeMods()` for this
+reason. Skipping it leaves `Game.mods` holding a previous run's values, which
+is invisible until something reads a speed that is quietly 20% wrong. It
+produced a 1-in-5 test flake before both were fixed.
 
 **Status effects refresh, they do not stack.** An aura calls `applySlow` every
 frame it contains a gohid; adding durations would leave anything that walked
@@ -254,6 +281,12 @@ that exists specifically to kill them contributes only 8 percentage points.
 They mostly die because they are ordinary aydins in a dangerous crowd, which is
 the intent. Worth re-checking if the loss rate ever looks wrong: the instinct
 is to blame the Hunter, and the instinct is wrong.
+
+**Two flakes with the same root cause, worth recognising on sight.** Both were
+"a multiplier did not come back to where it started". Neither was a bug in the
+event system: in both cases something had cleared state without refolding, so
+the *baseline* the test captured was stale rather than the result being wrong.
+If a mods-related test ever flakes again, suspect the baseline first.
 
 ### Measuring an upgrade's worth
 
@@ -375,9 +408,11 @@ visibly lose ground.
    player scores 13,948 with upgrades against 9,367 without, at half the losses
 4. ~~Character aydins and gohid variants~~ **done** — 10 characters with one
    ability each, 8 variants unlocked by run time, all from the same sprite
-5. Chests, pickups, events, arenas, modifiers
-6. Achievements, collection, results — *results done; Collection now lists
-   owned passives and tools with their levels; trophies still a shell*
+5. ~~Events, pickups, chests, modifiers~~ **done** — 7 pickups, 3 chest tiers
+   weighted by luck, 7 timed events, 6 per-run modifiers
+6. Arenas, achievements, collection — *results done; Collection lists owned
+   passives, tools, characters and live Active Effects; arenas and trophies
+   are still shells*
 7. Polish: audio, particles, banners, mobile
 
 `Game.mods` is the multiplier bag upgrades/modifiers/events write into, and

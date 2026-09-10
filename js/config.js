@@ -369,6 +369,116 @@ const CFG = {
                speedMul: 0.95, sizeMul: 1.15, splitInto: 'runner', splitCount: 2 },
   },
 
+  /* -------------------------------------------------------------- pickups
+   * Spawned near the herd and collected by walking into them. `weight` is the
+   * relative chance of each kind; mystery re-rolls into one of the others.
+   * --------------------------------------------------------------------- */
+  pickups: {
+    interval:    5,
+    intervalMin: 3.2,
+    rampTime:  240,
+    maxAlive:    6,
+    spawnMin:  220,      // distance from the commander
+    spawnMax:  620,
+    magnet:     90,      // base pull range, multiplied by Sharp Eyes and Scout
+    magnetPull: 420,
+    life:       26,      // seconds before it fades away
+    radius:     16,      // collection radius
+
+    kinds: {
+      feed:    { weight: 22, colour: '#ffcc6a', badge: 'F', aydins: 5 },
+      totem:   { weight:  8, colour: '#8ab6ff', badge: 'B' },
+      shard:   { weight: 16, colour: '#ffd76a', badge: 'T', score: 350 },
+      crystal: { weight: 22, colour: '#5ad1c4', badge: 'X', exp: 60 },
+      horn:    { weight: 12, colour: '#8ab6ff', badge: 'R', rally: 5 },
+      mystery: { weight: 12, colour: '#b96ad6', badge: '?' },
+      // Always the player's choice: real value, real cost, clearly marked.
+      idol:    { weight:  8, colour: '#e0435a', badge: '!',
+                 scoreMul: 1.5, duration: 30, gohids: 3 },
+    },
+  },
+
+  /* --------------------------------------------------------------- chests
+   * Walked into like a pickup, but they open into upgrade cards. No choice
+   * screen -- a chest is a gift, not another decision.
+   * --------------------------------------------------------------------- */
+  chests: {
+    interval:   48,
+    intervalMin: 34,
+    rampTime:  300,
+    maxAlive:    2,
+    spawnMin:  380,
+    spawnMax:  900,
+    radius:     22,
+    life:       60,
+
+    tiers: [
+      { id: 'normal',    name: 'CHEST',           weight: 65, cards: 1 },
+      { id: 'rare',      name: 'RARE CHEST',      weight: 27, cards: 3 },
+      { id: 'legendary', name: 'LEGENDARY CHEST', weight:  8, cards: 5 },
+    ],
+    // Luck shifts weight from normal toward the better tiers.
+    luckShift: 0.55,
+  },
+
+  /* --------------------------------------------------------------- events
+   * Timed run events. Each is DATA: a duration plus a bag of multipliers and
+   * flags. The scheduler only starts and stops them -- it never reaches into
+   * gameplay. Systems read the folded multipliers (Game.mods) or ask
+   * Events.flag() at their own point of use.
+   * --------------------------------------------------------------------- */
+  events: {
+    first:    32,        // first event no earlier than this
+    minGap:   25,
+    maxGap:   40,
+
+    list: [
+      { id: 'longNight', name: 'THE LONG NIGHT', sub: 'THE GOHIDS QUICKEN',
+        kind: 'bad',  duration: 15, mods: { gohidSpeed: 1.40 } },
+      { id: 'migration', name: 'MIGRATION',      sub: 'THE HERD SWELLS',
+        kind: 'event', duration: 10, mods: { recruitMul: 5 } },
+      { id: 'stampede',  name: 'STAMPEDE',       sub: 'THE HERD RUNS',
+        kind: 'event', duration: 12, mods: { aydinSpeed: 1.50 } },
+      { id: 'calling',   name: 'THE CALLING',    sub: 'THEY WANT YOU INSTEAD',
+        kind: 'level', duration:  8, flags: ['calling'] },
+      { id: 'thinIce',   name: 'THIN ICE',       sub: 'EVERY LOSS COUNTS TWICE',
+        kind: 'bad',  duration: 20, flags: ['thinIce'] },
+      { id: 'goldenHour', name: 'GOLDEN HOUR',   sub: 'SCORE TRIPLED',
+        kind: 'event', duration: 15, mods: { scoreMul: 3 } },
+      { id: 'silence',   name: 'THE SILENCE',    sub: 'NOTHING MOVES',
+        kind: 'level', duration:  5, flags: ['silence'] },
+    ],
+  },
+
+  /* ------------------------------------------------------------ modifiers
+   * Per-run modifiers, rolled once at the start. Same data shape as an event
+   * but lasting the whole run, so both fold through the same code.
+   * --------------------------------------------------------------------- */
+  modifiers: {
+    chance: 0.40,
+
+    list: [
+      { id: 'bloodMoon', name: 'BLOOD MOON',
+        desc: 'Gohids move faster. Score is worth more.',
+        mods: { gohidSpeed: 1.20, scoreMul: 1.5 } },
+      { id: 'fertile',   name: 'FERTILE',
+        desc: 'Recruits pour in, and the gohids are quicker for it.',
+        mods: { recruitMul: 2, gohidSpeed: 1.30 } },
+      { id: 'leanTimes', name: 'LEAN TIMES',
+        desc: 'No recruits at all. You keep only what you start with.',
+        mods: { scoreMul: 3 }, flags: ['noRecruits'] },
+      { id: 'fog',       name: 'FOG',
+        desc: 'You cannot see far.',
+        vision: 340 },
+      { id: 'bigHerd',   name: 'BIG HERD',
+        desc: 'You begin with a crowd.',
+        startAydins: 40 },
+      { id: 'hunted',    name: 'HUNTED',
+        desc: 'They were already waiting.',
+        startGohids: 8 },
+    ],
+  },
+
   /* --------------------------------------------------------------- minimap */
   minimap: {
     size:       148,     // css px, square

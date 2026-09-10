@@ -125,6 +125,7 @@ const Render = {
     Render._drawFloor(ctx, v);
     Render._drawTelegraphs(ctx);
     Render._drawRallyRing(ctx);
+    Pickups.draw(ctx, v);        // ground items and chests, under everything
     Tools.draw(ctx, v);          // smoke, walls, decoys, escorts
     Particles.draw(ctx, v);
     Render._drawEntities(ctx, v);
@@ -366,6 +367,11 @@ const Render = {
       ctx.globalCompositeOperation = prev;
     }
 
+    // Limited vision: a hard-edged darkness ring rather than a soft gradient,
+    // so it reads as pixel art rather than a blur filter.
+    const vis = (typeof Events !== 'undefined') ? Events.visionRadius() : 0;
+    if (vis > 0) Render._drawVision(ctx, w, h, vis);
+
     if (Game.flash > 0.01) {
       ctx.globalAlpha = U.quantise(Game.flash, 4) * 0.55;
       ctx.fillStyle = '#ffffff';
@@ -392,6 +398,30 @@ const Render = {
     ctx.fillRect(0, 0, w, h);
 
     if (Input.stick.active) Render._drawStick(ctx);
+  },
+
+  /* Darkness outside a radius around the commander. Drawn in screen space
+   * with destination-out on a filled overlay, which is one composite rather
+   * than a per-pixel mask. */
+  _drawVision(ctx, w, h, radius) {
+    const z = Render.zoom;
+    const cx = w / 2, cy = h / 2;
+    const r = radius * z;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(6,5,10,0.90)';
+    // Four rects plus a punched hole: fill everything, then cut the circle.
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'destination-out';
+    // Stepped rings give a hard pixel edge instead of a smooth vignette.
+    for (let i = 0; i < 4; i++) {
+      ctx.globalAlpha = 1 - i * 0.22;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * (1 - i * 0.06), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   },
 
   /* The floating stick is drawn where the thumb actually landed. */

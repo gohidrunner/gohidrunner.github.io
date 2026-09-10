@@ -462,11 +462,11 @@ const UI = {
   _collectionRows(tab) {
     if (tab === 'effects') {
       const out = [];
-      const eff = Game.effects || [];
+      const eff = (typeof Events !== 'undefined') ? Events.listActive() : [];
       for (let i = 0; i < eff.length; i++) {
         out.push({
           name: eff[i].name,
-          // Permanent effects say so rather than showing a number that never
+          // A permanent effect says so rather than showing a number that never
           // moves -- "rest of run" is the honest label.
           meta: eff[i].permanent ? 'REST OF RUN'
                                  : Math.ceil(eff[i].remaining) + 's',

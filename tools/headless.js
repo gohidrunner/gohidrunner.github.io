@@ -88,7 +88,7 @@ vm.createContext(sandbox);
 for (const f of ['js/config.js', 'js/utils.js', 'js/spatial.js',
                  'js/particles.js', 'js/entities.js', 'js/upgrades.js',
                  'js/tools.js', 'js/variants.js', 'js/characters.js',
-                 'js/game.js']) {
+                 'js/events.js', 'js/pickups.js', 'js/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -103,6 +103,8 @@ const Upgrades = vm.runInContext('Upgrades', sandbox);
 const Tools = vm.runInContext('Tools', sandbox);
 const Characters = vm.runInContext('Characters', sandbox);
 const Variants = vm.runInContext('Variants', sandbox);
+const Events = vm.runInContext('Events', sandbox);
+const PickupsMod = vm.runInContext('Pickups', sandbox);
 Upgrades.init();
 Characters.init();
 const AydinClass = vm.runInContext('Aydin', sandbox);
@@ -800,6 +802,240 @@ console.log('\n-- gohid variants ------------------------------------------');
   }
   check('every variant runs for 20s without throwing', threw.length === 0,
         threw.join(', '));
+}
+
+console.log('\n-- events and modifiers ------------------------------------');
+
+{
+  let bad = 0;
+  for (const e of CFG.events.list) {
+    if (!e.id || !e.name || typeof e.duration !== 'number') bad++;
+    if (!e.mods && !e.flags) bad++;   // an event that does nothing at all
+  }
+  check('every event is named, timed and actually does something', bad === 0,
+        bad + ' malformed');
+
+  let badMod = 0;
+  for (const m of CFG.modifiers.list) {
+    if (!m.id || !m.name || !m.desc) badMod++;
+    if (!m.mods && !m.flags && !m.vision && !m.startAydins && !m.startGohids) badMod++;
+  }
+  check('every run modifier is named, described and has an effect',
+        badMod === 0, badMod + ' malformed');
+}
+
+{
+  newRun();
+  Events.reset();
+  // Multipliers fold onto the upgrade buffs, and must come back OFF cleanly
+  // when the event expires -- the whole reason they are folded rather than
+  // written into the live value.
+  const base = Game.mods.gohidSpeed;
+  Events.start('longNight');
+  Game.recomputeMods();
+  const during = Game.mods.gohidSpeed;
+  check('an event multiplier reaches the game',
+        during > base, base.toFixed(2) + ' -> ' + during.toFixed(2));
+
+  run(CFG.events.list.filter((e) => e.id === 'longNight')[0].duration + 1);
+  check('an expired event leaves nothing behind',
+        Math.abs(Game.mods.gohidSpeed - base) < 1e-9,
+        'back to ' + Game.mods.gohidSpeed.toFixed(3));
+}
+
+{
+  newRun();
+  Events.reset();
+  // Two overlapping events must both apply and both unwind independently.
+  Events.start('longNight');
+  Events.start('goldenHour');
+  Game.recomputeMods();
+  const bothScore = Game.mods.scoreMul;
+  const bothSpeed = Game.mods.gohidSpeed;
+  check('two events stack multiplicatively',
+        bothScore > 2.9 && bothSpeed > 1.3,
+        'score x' + bothScore.toFixed(2) + ', gohid x' + bothSpeed.toFixed(2));
+  check('the same event never runs twice at once',
+        Events.start('longNight') === false);
+}
+
+{
+  newRun();
+  Events.reset();
+  // Flags are pulled, not pushed. Silence must actually stop gohids moving.
+  const c = Game.commander;
+  Game.gohids.length = 0;
+  const g = new GohidClass(c.x + 300, c.y);
+  Game.gohids.push(g);
+  Events.start('silence');
+  const x0 = g.x, y0 = g.y;
+  run(1);
+  check('the silence stops every gohid dead',
+        Math.hypot(g.x - x0, g.y - y0) < 0.001,
+        'moved ' + Math.hypot(g.x - x0, g.y - y0).toFixed(2) + 'px');
+}
+
+{
+  newRun();
+  Events.reset();
+  // The Calling: they come for the commander and stop taking the herd.
+  const c = Game.commander;
+  Game.gohids.length = 0;
+  Game.aydins.forEach((a) => { a.invuln = 0; a.x = c.x + 250; a.y = c.y; });
+  for (let i = 0; i < 6; i++) Game.gohids.push(new GohidClass(c.x + 250, c.y));
+  Events.start('calling');
+  const lost0 = Game.stats.lost;
+  run(3);
+  check('during the calling nothing in the herd is taken',
+        Game.stats.lost === lost0, (Game.stats.lost - lost0) + ' taken');
+}
+
+{
+  newRun();
+  Events.reset();
+  // Thin Ice doubles the consequence of every loss.
+  check('normally a capture creates one gohid', Events.captureSpawnCount() === 1);
+  Events.start('thinIce');
+  check('thin ice makes it two', Events.captureSpawnCount() === 2);
+}
+
+{
+  newRun();
+  Events.reset();
+  // Lean Times: no recruits at all, for the whole run.
+  Events.modifier = CFG.modifiers.list.filter((m) => m.id === 'leanTimes')[0];
+  Game.recomputeMods();
+  const n0 = Game.aydins.length;
+  Game.gohids.length = 0;          // isolate recruiting from losses
+  Game.pending.length = 0;
+  run(20);
+  check('lean times means no recruits ever arrive',
+        Game.aydins.length === n0, n0 + ' -> ' + Game.aydins.length);
+  check('lean times pays for it in score', Game.mods.scoreMul >= 3,
+        'x' + Game.mods.scoreMul.toFixed(1));
+}
+
+console.log('\n-- pickups and chests --------------------------------------');
+
+{
+  let bad = 0;
+  for (const id in CFG.pickups.kinds) {
+    const k = CFG.pickups.kinds[id];
+    if (!k.colour || !k.badge || typeof k.weight !== 'number') bad++;
+  }
+  check('every pickup kind is fully specified', bad === 0, bad + ' malformed');
+
+  newRun();
+  const seen = Object.create(null);
+  for (let i = 0; i < 3000; i++) seen[PickupsMod._rollKind()] = true;
+  check('every pickup kind can actually appear',
+        Object.keys(seen).length === Object.keys(CFG.pickups.kinds).length,
+        Object.keys(seen).length + ' of ' + Object.keys(CFG.pickups.kinds).length);
+}
+
+{
+  newRun();
+  // Each pickup must do the thing it says on the tin.
+  const c = Game.commander;
+
+  const before = Game.aydins.length;
+  PickupsMod.collect({ kind: 'feed', x: c.x, y: c.y });
+  check('a feed sack adds aydins',
+        Game.aydins.length === before + CFG.pickups.kinds.feed.aydins,
+        before + ' -> ' + Game.aydins.length);
+
+  const s0 = Game.score;
+  PickupsMod.collect({ kind: 'shard', x: c.x, y: c.y });
+  check('a time shard adds score', Game.score > s0);
+
+  const e0 = Game.exp;
+  PickupsMod.collect({ kind: 'crystal', x: c.x, y: c.y });
+  check('an exp crystal adds experience', Game.exp > e0);
+
+  PickupsMod.collect({ kind: 'horn', x: c.x, y: c.y });
+  check('a rally horn grants a free rally', Game.hornT > 0);
+  Game.update(1 / 60);
+  check('a horn rally costs no speed', Game.rallying === true && Game.hornT > 0);
+
+  Game.gohids.length = 0;
+  Game.gohids.push(new GohidClass(c.x + 200, c.y));
+  // One frame first: the totem finds its target through the spatial grid, and
+  // the grid is only rebuilt inside Game.update(). In real play that is always
+  // satisfied -- Pickups.update runs after the rebuild, in the same frame --
+  // but a test that collects before any frame has run queries an empty grid.
+  run(1 / 60);
+  PickupsMod.collect({ kind: 'totem', x: c.x, y: c.y });
+  check('a banish totem removes the nearest gohid',
+        Game.gohids.length > 0 && Game.gohids[0].leaving === true,
+        Game.gohids.length + ' gohids, leaving='
+        + (Game.gohids[0] && Game.gohids[0].leaving));
+}
+
+{
+  newRun();
+  // The idol is meant to be a real choice: it pays AND it costs.
+  const g0 = Game.gohids.length + Game.pending.length;
+  PickupsMod.collect({ kind: 'idol', x: Game.commander.x, y: Game.commander.y });
+  Game.recomputeMods();
+  check('the cursed idol raises score', Game.mods.scoreMul > 1,
+        'x' + Game.mods.scoreMul.toFixed(2));
+  check('the cursed idol also spawns gohids',
+        Game.gohids.length + Game.pending.length
+          >= g0 + CFG.pickups.kinds.idol.gohids);
+}
+
+{
+  newRun();
+  // Mystery must never resolve to another mystery, or it can loop.
+  let mysteries = 0;
+  for (let i = 0; i < 200; i++) {
+    const before = Game.stats.pickups;
+    PickupsMod.collect({ kind: 'mystery', x: Game.commander.x, y: Game.commander.y });
+    if (Game.stats.pickups === before) mysteries++;
+  }
+  check('a mystery sack always resolves to something real', mysteries === 0);
+}
+
+{
+  newRun();
+  // A chest is a gift: it takes its cards itself, with no choice screen.
+  const tier = CFG.chests.tiers.filter((t) => t.id === 'rare')[0];
+  const owned0 = Object.keys(Upgrades.levels).length;
+  PickupsMod.openChest(tier);
+  const gained = Object.keys(Upgrades.levels).length - owned0;
+  check('a rare chest grants its cards without asking', gained > 0,
+        gained + ' upgrades from a ' + tier.cards + '-card chest');
+  check('opening a chest is counted', Game.stats.chests === 1);
+}
+
+{
+  newRun();
+  // Luck must shift chests toward the better tiers, not merely add volume.
+  const roll = (n) => {
+    let legendary = 0;
+    for (let i = 0; i < n; i++) if (PickupsMod._rollTier().id === 'legendary') legendary++;
+    return legendary / n;
+  };
+  Game.buffs.luck = 0;
+  const plain = roll(6000);
+  Game.buffs.luck = 1.5;
+  const lucky = roll(6000);
+  check('luck shifts chests toward better tiers', lucky > plain,
+        (plain * 100).toFixed(1) + '% -> ' + (lucky * 100).toFixed(1) + '% legendary');
+}
+
+{
+  newRun();
+  // Pickups must be collectable by walking into them, and must expire.
+  const c = Game.commander;
+  PickupsMod.items.length = 0;
+  PickupsMod.items.push({ kind: 'shard', x: c.x + 8, y: c.y, t: 10, max: 10, bob: 0 });
+  run(0.2);
+  check('walking into a pickup collects it', PickupsMod.items.length === 0);
+
+  PickupsMod.items.push({ kind: 'shard', x: c.x + 4000, y: c.y, t: 0.5, max: 26, bob: 0 });
+  run(1);
+  check('an uncollected pickup expires', PickupsMod.items.length === 0);
 }
 
 console.log('\n-- the spiral ----------------------------------------------');
