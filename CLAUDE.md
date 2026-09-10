@@ -7,9 +7,9 @@ every aydin caught becomes another gohid. The herd is the score and the bomb.
 **No build step.** `index.html` opens straight off the disk — plain
 `<script src>` tags, no bundler, no npm.
 
-Current state: **phase 1 (core loop) and the phase-2 UI pass are done.**
-Progression, tools, character aydins, gohid variants, events, pickups, chests,
-arenas and achievements are not built yet — the UI has their shells.
+Current state: **core loop, UI pass, and levelling/passives/tools are done.**
+Character aydins, gohid variants, events, pickups, chests, arenas and
+achievements are not built yet — the UI has their shells.
 
 ---
 
@@ -24,10 +24,12 @@ in the bug log. Opening `index.html` straight off the filesystem also works;
 see *Why sprites and the font are base64*.
 
 ```bash
-node tools/headless.js                    # 24 assertions, no browser
+node tools/headless.js                    # 44 assertions, no browser
+node tools/headless.js --no-upgrades      # model a player who never levels
 node tools/headless.js --balance          # balance table over 5 simulated min
 node tools/headless.js --balance --minutes 12 --repeat 8
 node tools/headless.js --balance --set recruit.intervalMin=0.9
+node tools/tooltest.js 10 110             # per-upgrade worth vs a no-upgrade run
 python gen_assets.py                      # re-embed sprites into js/assets.js
 python gen_font.py                        # rebuild the pixel font + css/font.css
 ```
@@ -55,6 +57,8 @@ Scripts are plain classic scripts sharing one global scope. Order in
 | `js/save.js` | Persisted profile: best, lifetime, unlocks, settings | CFG, utils |
 | `js/input.js` | Keyboard + floating touch stick → `mx/my` + `rally` | CFG, audio |
 | `js/entities.js` | `Commander`, `Aydin`, `Gohid` | all of the above |
+| `js/upgrades.js` | The shared passive+tool level map, buffs, evolutions | entities |
+| `js/tools.js` | Auto-firing tools, world zones, escorts | upgrades |
 | `js/game.js` | World state, update order, capture, spawning, exp | entities, grid |
 | `js/render.js` | Camera, zoom, culled floor, depth-sorted sprites | game, sprites |
 | `js/minimap.js` | Its own canvas on its own clock | game, render |
@@ -110,6 +114,21 @@ appear.
 **The font is generated, not downloaded** (`gen_font.py`). 95 glyphs from 5x7
 bitmaps defined in the script, 1.9KB. No network dependency and no third-party
 licence to carry.
+
+**One registry for passives AND tools** (`js/upgrades.js`). They differ only
+by a `kind` field, so the card modal, Collection screen, level pips and
+evolution check never branch on which sort of thing they hold.
+
+**The buffs bag is rebuilt from scratch, never incremented.** Upgrades, per-run
+modifiers and timed events all want to scale the same handful of numbers. If
+each wrote a delta into the live value they could not be removed
+independently, and an event that ended would leave its multiplier behind
+forever. Rebuilding is O(upgrades taken), runs once per level-up, and cannot
+drift — there is a test for its idempotence.
+
+**Status effects refresh, they do not stack.** An aura calls `applySlow` every
+frame it contains a gohid; adding durations would leave anything that walked
+through a dust cloud slowed for the rest of the run.
 
 **HUD nodes are written in place.** Never `innerHTML` during a frame, and
 values are compared before writing so a steady herd count does not dirty the
@@ -189,6 +208,36 @@ out on small viewports; the same measurement afterwards was 49 of 54. Zoom is
 snapped to 1/20ths, because a continuously varying scale resamples every sprite
 edge slightly differently and makes the whole scene crawl.
 
+**Stunning a gohid made the game HARDER.** *(fixed)*
+`Gohid.update` returned early when stunned or rooted, and both the boredom
+timer and the boredom CHECK sat below that return. Boredom removes the large
+majority of gohids a run ever creates, so every stun, root and freeze quietly
+suppressed the main way the board clears. Measured per-upgrade against a
+no-upgrade baseline, Flashbang scored **-19%** — an upgrade that actively hurt
+the player. Both the timer and the check now sit above the disabled gate, and
+Flashbang measures **+12.7%**. There is a regression test, because nothing
+about this was visible on screen: the tool looked like it was working.
+
+**Beacon was worth three of anything else.** *(tuned)*
+Recruit rate is the dominant lever in the whole economy, so a percentage buff
+to it is worth far more than the same percentage anywhere else: at
+`perLevel 0.14` it measured **+62%** against a field where the next best was
++22%. Reduced to 0.055, which lands it at +23.5%.
+
+### Measuring an upgrade's worth
+
+`node tools/tooltest.js [runs] [seconds]` grants exactly one upgrade at max, runs a scripted
+player, and compares against the same player with nothing. Two things make the
+output trustworthy:
+
+- **Fast Hands is a built-in control.** It only reduces tool cooldowns, and the
+  test grants no tools, so its true effect is exactly zero. Whatever it
+  measures is the noise floor — **±11% at 10 runs of 110s**. Only deltas above
+  roughly 15% mean anything, and a "harmful" reading below that is noise. Two
+  upgrades were nearly rebalanced on the strength of such a reading.
+- Anything genuinely below the baseline is a bug, not a tuning nudge. A
+  roguelite upgrade that loses you the run is broken by definition.
+
 ### Two traps that cost real time — read these before debugging in the browser
 
 **The stale cache.** `python -m http.server` sends no cache directives, so the
@@ -260,6 +309,8 @@ faces the two they started with for the entire run and there is no pressure
 curve. Set `ambient.interval` very high to return to pure capture-driven
 spawning.
 
+**Beacon's per-level value cut from 0.14 to 0.055** — see the bug log.
+
 **Camera zoom on small viewports** — not in the spec, but without it a phone
 cannot see its own herd. See the bug log.
 
@@ -288,18 +339,23 @@ visibly lose ground.
 
 1. ~~Commander + flock + gohids + capture + spiral + score~~ **done**
 2. ~~UI pass: palette, font, HUD, minimap, menu, pause, results~~ **done**
-3. Levelling, passives, tools — *exp and levels run; the 3-card modal renders
-   from data but no upgrade tables exist yet, so `_levelUp` only banners*
+3. ~~Levelling, passives, tools~~ **done** — 18 passives, 15 tools, 5
+   evolutions, all numbers in config. Measured net-positive: the same scripted
+   player scores 13,948 with upgrades against 9,367 without, at half the losses
 4. Character aydins and gohid variants
 5. Chests, pickups, events, arenas, modifiers
-6. Achievements, collection, results — *results done; collection and trophies
-   are shells reading from empty lists*
+6. Achievements, collection, results — *results done; Collection now lists
+   owned passives and tools with their levels; trophies still a shell*
 7. Polish: audio, particles, banners, mobile
 
 `Game.mods` is the multiplier bag upgrades/modifiers/events write into, and
-`Game.tools/characters/effects/pickups/chests` are declared empty so the UI can
+`Game.characters/effects/pickups/chests` are declared empty so the UI can
 iterate them unconditionally. Adding those systems should be filling an array,
-not teaching the UI a new shape.
+not teaching the UI a new shape. `Game.tools` now points at `Tools.active`.
+
+Adding an upgrade is a table entry in `js/upgrades.js` plus its numbers in
+`CFG.upgrades`. Adding a tool is a table entry, an icon, and one case in the
+fire switch in `js/tools.js`.
 
 ## Still untested
 

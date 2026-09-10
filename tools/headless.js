@@ -556,6 +556,30 @@ console.log('\n-- upgrades ------------------------------------------------');
         threw.join(', '));
 }
 
+{
+  // A gohid held in place and catching nothing must still get bored. Boredom
+  // removes most of the gohids a run ever creates, so if a status effect
+  // pauses it, every stun and root quietly makes the board WORSE -- which is
+  // exactly what happened: Flashbang measured at -19% score against a
+  // no-upgrade baseline before this was fixed.
+  newRun();
+  const c = Game.commander;
+  Game.gohids.length = 0;
+  for (let i = 0; i < CFG.gohid.boredom.minGohids + 6; i++) {
+    Game.gohids.push(new GohidClass(c.x + 900 + i * 12, c.y + 900));
+  }
+  const watched = Game.gohids[0];
+  const step = 1 / 60;
+  for (let i = 0; i < 60 * (CFG.gohid.boredom.time + 3); i++) {
+    watched.applyRoot(0.5);        // keep it pinned for the whole window
+    Game.update(step);
+    if (Game.state !== 'playing') break;
+  }
+  check('a rooted gohid still gets bored and leaves',
+        watched.leaving || !watched.alive,
+        'sinceCatch ' + watched.sinceCatch.toFixed(1) + 's');
+}
+
 console.log('\n-- the spiral ----------------------------------------------');
 
 newRun();

@@ -235,7 +235,11 @@ const CFG = {
     boots:      { perLevel: 0.07 },   // commander speed
     whistle:    { perLevel: 0.18 },   // cohesion strength
     grazing:    { perLevel: 0.05 },   // aydin speed
-    beacon:     { perLevel: 0.14 },   // recruit rate
+    // Measured at +62% score against a no-upgrade baseline at 0.14 -- roughly
+    // three times the next best upgrade (decoyDummy, +22%). Recruit rate is
+    // the dominant lever in the whole economy, so a percentage buff to it is
+    // worth far more than the same percentage anywhere else.
+    beacon:     { perLevel: 0.055 },  // recruit rate
     slippery:   { perLevel: 0.08 },   // gohids miss this often
     wideRally:  { perLevel: 0.16 },   // rally radius
     ironNerve:  { perLevel: 0.14 },   // panic duration cut

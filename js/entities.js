@@ -273,6 +273,37 @@ class Gohid {
 
     // Stunned or rooted: hold position entirely. Timers above still run, so a
     // gohid always recovers.
+    // Boredom accrues even while disabled. Returning before this meant a
+    // stunned or rooted gohid had its boredom timer PAUSED -- and since
+    // boredom is what removes the large majority of gohids ever created,
+    // disabling one quietly suppressed the main way the board clears. It made
+    // Flashbang measure as a net-harmful upgrade (-19% score against a
+    // no-upgrade baseline), which is the opposite of what stunning should do.
+    // A gohid held in place and catching nothing should get bored faster, if
+    // anything, not slower.
+    if (!this.leaving) {
+      this.sinceCatch += dt;
+
+      // Boredom is a relief valve, not a freebie: it only fires while the
+      // board is already crowded, so it can never make an early run easier.
+      //
+      // Both the timer and this CHECK sit above the disabled early-return.
+      // With either below it, a stunned or rooted gohid never gives up, and
+      // since boredom removes the large majority of gohids a run creates,
+      // every stun and root quietly suppressed the main way the board clears.
+      // Flashbang measured at -19% score against a no-upgrade baseline.
+      if (this.sinceCatch > G.boredom.time
+          && game.gohids.length > G.boredom.minGohids) {
+        this.beginLeaving();
+        Audio2.banish();
+        Particles.burst(this.x, this.y, 10, {
+          speed: 90, life: 0.5, size: 3, colour: '#cfd6b8',
+        });
+        return;
+      }
+    }
+
+    // Still held: it has given up nothing, but it cannot act either.
     if (this.disabled) { this.vx = 0; this.vy = 0; return; }
 
     let speed = G.speed * game.mods.gohidSpeed;
@@ -286,19 +317,6 @@ class Gohid {
       this.y += (this.vy / l) * s * dt;
       if (this.x < -80 || this.x > CFG.world.width + 80 ||
           this.y < -80 || this.y > CFG.world.height + 80) this.alive = false;
-      return;
-    }
-
-    this.sinceCatch += dt;
-
-    // Boredom is a relief valve, not a freebie: it only ever fires while the
-    // board is already crowded, so it can never make an early run easier.
-    if (this.sinceCatch > G.boredom.time && game.gohids.length > G.boredom.minGohids) {
-      this.beginLeaving();
-      Audio2.banish();
-      Particles.burst(this.x, this.y, 10, {
-        speed: 90, life: 0.5, size: 3, colour: '#cfd6b8',
-      });
       return;
     }
 
